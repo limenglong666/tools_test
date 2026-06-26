@@ -2,6 +2,8 @@
 
 汇集各类实用小工具，**一个工具一个文件夹**。
 
+**工具首页**：仓库根目录 [`index.html`](index.html)（部署后访问站点根路径 `/`），可从首页跳转到各个工具。
+
 ## 工具列表
 
 | 工具 | 目录 | 说明 |
@@ -11,13 +13,15 @@
 
 ## 本地运行
 
-在仓库根目录启动静态服务：
+**请在仓库根目录**启动服务（不要在子工具文件夹里 `serve`，否则 `http://localhost:3456` 会直接进入某个工具，而不是工具首页）：
 
 ```bash
-npx --yes serve -p 3456
+cd /path/to/tools_test   # 仓库根目录
+npm start
+# 或：npx --yes serve -p 3456
 ```
 
-- 工具导航页：`http://localhost:3456`
+- 工具首页：`http://localhost:3456/`
 - EIP-712 Debugger：`http://localhost:3456/ethereum-eip712/`
 - Browser ↔ Table Compare：`http://localhost:3456/browser-table-compare/`
 

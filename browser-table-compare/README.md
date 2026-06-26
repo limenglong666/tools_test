@@ -23,12 +23,14 @@
 
 ### 1. 启动本地服务
 
+在**仓库根目录**运行（见根目录 `README.md`）：
+
 ```bash
-cd browser-table-compare
-npx --yes serve -p 3456
+npm start
 ```
 
-打开 `http://localhost:3456/browser-table-compare/`
+- 工具首页：`http://localhost:3456/`
+- 本工具：`http://localhost:3456/browser-table-compare/`
 
 ### 2. 加载 CSV
 

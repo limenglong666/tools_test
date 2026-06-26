@@ -18,12 +18,12 @@
 
 ## 本地打开
 
-```bash
-cd ethereum-eip712
-npx --yes serve -p 3456
-```
+在**仓库根目录**运行 `npm start` 后访问：
 
-浏览器访问 `http://localhost:3456`，或直接双击打开 `index.html`（部分浏览器对 `file://` 限制钱包接口，建议用本地 HTTP）。
+- 工具首页：`http://localhost:3456/`
+- 本工具：`http://localhost:3456/ethereum-eip712/`
+
+也可仅调试本工具时在该目录执行 `npx --yes serve -p 3456`，此时地址为 `http://localhost:3456/`（无工具首页）。
 
 ## 部署到 Vercel
 

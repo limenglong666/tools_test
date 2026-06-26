@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Tools</title>
+  <title>Tools · 工具首页</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -30,23 +30,22 @@
         radial-gradient(ellipse 80% 50% at 50% -20%, rgba(61, 139, 253, 0.1), transparent);
     }
     .wrap {
-      max-width: 720px;
+      max-width: 760px;
       margin: 0 auto;
       padding: 3rem 1.25rem 4rem;
     }
-    header {
-      margin-bottom: 2.5rem;
-    }
+    header { margin-bottom: 2rem; }
     h1 {
       font-size: 2rem;
       font-weight: 700;
       letter-spacing: -0.03em;
       margin: 0 0 0.5rem;
     }
-    .sub {
+    .sub { color: var(--muted); font-size: 1rem; margin: 0; max-width: 42ch; }
+    .tool-count {
+      margin-top: 1rem;
+      font-size: 0.8rem;
       color: var(--muted);
-      font-size: 1rem;
-      margin: 0;
     }
     .tools {
       display: flex;
@@ -79,34 +78,65 @@
       font-size: 0.9rem;
       color: var(--muted);
     }
+    .tool-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-top: 0.75rem;
+      align-items: center;
+    }
     .tool-path {
-      margin-top: 0.65rem;
       font-family: ui-monospace, monospace;
       font-size: 0.78rem;
       color: var(--muted);
-      opacity: 0.85;
     }
+    .tool-go {
+      margin-left: auto;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--accent);
+    }
+    footer {
+      margin-top: 2.5rem;
+      padding-top: 1.25rem;
+      border-top: 1px solid var(--border);
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+    footer code { color: var(--accent); font-size: 0.78rem; }
   </style>
 </head>
 <body>
   <div class="wrap">
     <header>
       <h1>Tools</h1>
-      <p class="sub">汇集各类实用小工具，一个工具一个文件夹。</p>
+      <p class="sub">工具首页：汇集各类实用小工具，点击进入对应工具页面。</p>
+      <p class="tool-count">当前共 2 个工具</p>
     </header>
 
-    <div class="tools">
+    <nav class="tools" aria-label="工具列表">
       <a class="tool-card" href="ethereum-eip712/">
         <h2>EIP-712 Debugger</h2>
         <p>在以太坊 / EVM 链上调试 typed data 签名：编辑载荷、计算 digest、钱包签名与链下验签。</p>
-        <div class="tool-path">ethereum-eip712/</div>
+        <div class="tool-meta">
+          <span class="tool-path">ethereum-eip712/</span>
+          <span class="tool-go">进入工具 →</span>
+        </div>
       </a>
       <a class="tool-card" href="browser-table-compare/">
-        <h2>Browser ↔ Table Compare</h2>
-        <p>CSV 中验证器 CL Rewards 与 beaconcha.in Validator History（按 Epoch）对比。</p>
-        <div class="tool-path">browser-table-compare/</div>
+        <h2>Validator Rewards Compare</h2>
+        <p>CSV 验证器 CL / EL 与 beaconcha.in Validator History（按 Epoch）对比。</p>
+        <div class="tool-meta">
+          <span class="tool-path">browser-table-compare/</span>
+          <span class="tool-go">进入工具 →</span>
+        </div>
       </a>
-    </div>
+    </nav>
+
+    <footer>
+      请在<strong>仓库根目录</strong>运行 <code>npm start</code> 或 <code>npx --yes serve -p 3456</code>，再访问本页。
+      若在子工具目录里启动 serve，<code>localhost:3456</code> 会直接进入该工具而非首页。
+    </footer>
   </div>
 </body>
 </html>

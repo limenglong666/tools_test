@@ -39,6 +39,14 @@
       margin: 0 auto;
       padding: 2rem 1.25rem 4rem;
     }
+    a.back {
+      color: var(--muted);
+      font-size: 0.875rem;
+      text-decoration: none;
+      display: inline-block;
+      margin-bottom: 0.25rem;
+    }
+    a.back:hover { color: var(--accent); }
     header {
       margin-bottom: 2rem;
       border-bottom: 1px solid var(--border);
@@ -288,6 +296,7 @@
 </head>
 <body>
   <div class="wrap">
+    <a class="back" href="../">← 返回工具首页</a>
     <header>
       <h1>EIP-712 Debugger</h1>
       <p class="sub">在以太坊（及兼容链）上调试 typed data 签名：编辑载荷、计算 digest、<code style="color:var(--accent)">eth_signTypedData_v4</code> 签名与链下验签。</p>
