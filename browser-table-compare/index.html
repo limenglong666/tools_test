@@ -150,6 +150,51 @@
       background: var(--accent-dim);
     }
     .source-panel[hidden] { display: none; }
+    .compare-context {
+      margin-bottom: 1rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .ctx-value {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.8rem;
+      padding: 0.55rem 0;
+      word-break: break-all;
+      color: var(--text);
+    }
+    .ctx-value.muted { color: var(--muted); }
+    .ctx-rows {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.78rem;
+      max-height: 12rem;
+      overflow-y: auto;
+    }
+    .ctx-row {
+      padding: 0.45rem 0.5rem;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+    }
+    .ctx-row-select {
+      display: flex;
+      gap: 0.55rem;
+      align-items: flex-start;
+      cursor: pointer;
+      border-radius: 6px;
+      margin: 0 -0.35rem;
+    }
+    .ctx-row-select input { margin-top: 0.15rem; flex-shrink: 0; }
+    .ctx-row-select.selected { background: var(--accent-dim); }
+    .ctx-row-body {
+      display: flex;
+      flex-direction: column;
+      gap: 0.2rem;
+      min-width: 0;
+      line-height: 1.4;
+    }
+    .ctx-row-title { color: var(--text); }
+    .ctx-row-metric { color: var(--muted); font-size: 0.74rem; }
+    .ctx-row-metric strong { color: var(--accent); font-weight: 600; }
+    .ctx-row:last-child { border-bottom: none; }
     details { margin-top: 0.75rem; }
     summary { cursor: pointer; color: var(--accent); font-size: 0.85rem; }
   </style>
@@ -176,20 +221,12 @@
     </section>
 
     <section>
-      <h2>2 · 验证器与 Epoch 范围</h2>
+      <h2>2 · 选择验证器</h2>
       <div class="row">
         <div class="field">
           <label for="pubkey">Public Key（手动输入）</label>
           <input type="text" id="pubkey" spellcheck="false"
             value="0x8001ff793be4d78da2175d4c67b0e51f4862a48c5b5834a9bc1a80e3912a8c52d778b02287605300257f1c6a7ad1f9a2" />
-        </div>
-        <div class="field sm">
-          <label for="epochStart">起始 Epoch</label>
-          <input type="number" id="epochStart" value="457380" />
-        </div>
-        <div class="field sm">
-          <label for="epochEnd">结束 Epoch</label>
-          <input type="number" id="epochEnd" value="457394" />
         </div>
       </div>
       <div id="pubkeyPicker" class="pubkey-picker disabled">
@@ -208,6 +245,32 @@
 
     <section>
       <h2>3 · beaconcha.in Validator History</h2>
+
+      <div class="compare-context">
+        <div class="row" style="margin-bottom:0.5rem">
+          <div class="field">
+            <label>当前验证器</label>
+            <div id="ctxValidator" class="ctx-value muted">—</div>
+          </div>
+          <div class="field">
+            <label>CSV 各行（点选一行用于对比）</label>
+            <div id="ctxCsvRows" class="ctx-rows ctx-value muted">请先加载 CSV 并选择验证器</div>
+          </div>
+          <div class="field sm">
+            <label for="epochStart">起始 Epoch</label>
+            <input type="number" id="epochStart" value="457380" />
+          </div>
+          <div class="field sm">
+            <label for="epochEnd">结束 Epoch</label>
+            <input type="number" id="epochEnd" value="457394" />
+          </div>
+        </div>
+        <p id="ctxEpochHint" class="hint" style="margin:0">
+          对比区间：<strong id="ctxEpochRange">457380 – 457394</strong>
+          · 共 <strong id="ctxEpochCount">15</strong> 个 Epoch
+        </p>
+      </div>
+
       <div class="tabs" role="tablist">
         <button type="button" class="tab active" data-tab="json">API JSON / HTML</button>
         <button type="button" class="tab" data-tab="manual">手动逐条粘贴</button>
@@ -262,6 +325,7 @@
             <tr>
               <th>Epoch</th>
               <th>beaconcha CL (ETH)</th>
+              <th>beaconcha EL (ETH)</th>
             </tr>
           </thead>
           <tbody id="epochTable"></tbody>
@@ -273,7 +337,8 @@
         <p class="hint">
           beaconcha CL = 各 attestation / proposer / sync / slashing 奖励项之和 − 惩罚项（单位 gwei，来自
           <code>incomedetailhistory</code>）。
-          CSV 侧对同一 Public Key 的多行（如不同导出批次）会<strong>求和</strong>后再与 beaconcha 区间 CL 总和对比。
+          CSV 侧使用<strong>所选单行</strong>的 CL / EL 与 beaconcha 区间总和对比。
+          手动粘贴 beaconcha 时仅含 CL（GWei）；EL 对比需 API JSON 中含 <code>tx_fee_reward_wei</code>。
         </p>
       </details>
     </section>
@@ -283,6 +348,7 @@
     import {
       parseCsv,
       aggregateCsvByPubkey,
+      csvAggFromRow,
       listValidatorsFromCsv,
       resolveBeaconchaRows,
       filterEpochRange,
@@ -297,8 +363,89 @@
     let csvRows = [];
     let csvValidators = [];
     let activeBeaconTab = "json";
+    let selectedCsvLine = null;
 
     const $ = (id) => document.getElementById(id);
+
+    function getSelectedCsvAgg(pubkey) {
+      const agg = aggregateCsvByPubkey(csvRows, pubkey);
+      if (!agg.rows.length) return agg;
+      const row = agg.rows.find((r) => r.line === selectedCsvLine) || agg.rows[0];
+      selectedCsvLine = row.line;
+      return csvAggFromRow(row);
+    }
+
+    function renderCsvRowPicker(agg) {
+      const csvRowsEl = $("ctxCsvRows");
+      if (!selectedCsvLine || !agg.rows.some((r) => r.line === selectedCsvLine)) {
+        selectedCsvLine = agg.rows[0].line;
+      }
+
+      csvRowsEl.className = "ctx-rows";
+      csvRowsEl.innerHTML = agg.rows
+        .map((r, i) => {
+          const checked = r.line === selectedCsvLine;
+          return `<label class="ctx-row ctx-row-select${checked ? " selected" : ""}">
+            <input type="radio" name="csvRowPick" value="${r.line}"${checked ? " checked" : ""} />
+            <span class="ctx-row-body">
+              <span class="ctx-row-title">第 ${i + 1} 行 · ${r.date || "—"}</span>
+              <span class="ctx-row-metric"><strong>CL</strong> ${formatEth(r.clEth)} ETH</span>
+              <span class="ctx-row-metric"><strong>EL</strong> ${formatEth(r.elEth)} ETH</span>
+            </span>
+          </label>`;
+        })
+        .join("");
+
+      csvRowsEl.querySelectorAll('input[name="csvRowPick"]').forEach((inp) => {
+        inp.addEventListener("change", (e) => {
+          selectedCsvLine = Number(e.target.value);
+          renderCsvRowPicker(agg);
+        });
+      });
+    }
+
+    function refreshCompareContext() {
+      const pk = normalizePubkey($("pubkey").value);
+      const start = Number($("epochStart").value);
+      const end = Number($("epochEnd").value);
+      const validatorEl = $("ctxValidator");
+      const csvRowsEl = $("ctxCsvRows");
+
+      if (Number.isFinite(start) && Number.isFinite(end) && start <= end) {
+        $("ctxEpochRange").textContent = `${start} – ${end}`;
+        $("ctxEpochCount").textContent = String(end - start + 1);
+      } else {
+        $("ctxEpochRange").textContent = "—";
+        $("ctxEpochCount").textContent = "—";
+      }
+
+      if (!pk) {
+        validatorEl.textContent = "—";
+        validatorEl.className = "ctx-value muted";
+        csvRowsEl.innerHTML = "请先加载 CSV 并选择验证器";
+        csvRowsEl.className = "ctx-rows ctx-value muted";
+        return;
+      }
+
+      validatorEl.textContent = pk;
+      validatorEl.className = "ctx-value";
+
+      if (!csvRows.length) {
+        csvRowsEl.innerHTML = "请先加载 CSV";
+        csvRowsEl.className = "ctx-rows ctx-value muted";
+        return;
+      }
+
+      const agg = aggregateCsvByPubkey(csvRows, pk);
+      if (!agg.rows.length) {
+        selectedCsvLine = null;
+        csvRowsEl.innerHTML = "CSV 中无此验证器";
+        csvRowsEl.className = "ctx-rows ctx-value muted";
+        return;
+      }
+
+      renderCsvRowPicker(agg);
+    }
 
     function updateBeaconLink(pubkey, validatorIndex) {
       const pk = normalizePubkey(pubkey);
@@ -309,6 +456,7 @@
         const found = csvValidators.find((v) => v.publicKey === pk);
         $("validatorIndexHint").textContent = found?.validatorIndex || "—";
       }
+      refreshCompareContext();
     }
 
     function renderPubkeySelect(filter = "") {
@@ -328,7 +476,7 @@
         `<option value="">— 选择验证器（${list.length} / ${csvValidators.length}）—</option>` +
         list
           .map((v) => {
-            const label = `#${v.validatorIndex || "?"} · ${truncatePubkey(v.publicKey)} · ${v.rowCount} 行 · CL ${formatEth(v.clEth)}`;
+            const label = v.publicKey;
             const selected = v.publicKey === current ? " selected" : "";
             return `<option value="${v.publicKey}"${selected}>${label}</option>`;
           })
@@ -368,10 +516,12 @@
         setCsvInfo(`已加载 ${label}：${csvRows.length} 行，${csvValidators.length} 个唯一 Public Key`, true);
         enablePubkeyPicker();
         syncSelectToPubkeyInput();
+        refreshCompareContext();
       } catch (err) {
         csvRows = [];
         disablePubkeyPicker();
         setCsvInfo(err.message || String(err), false);
+        refreshCompareContext();
         throw err;
       }
     }
@@ -408,18 +558,24 @@
     $("pubkeySelect").addEventListener("change", (e) => {
       const pk = e.target.value;
       if (!pk) return;
+      selectedCsvLine = null;
       $("pubkey").value = pk;
       const v = csvValidators.find((x) => x.publicKey === pk);
       updateBeaconLink(pk, v?.validatorIndex);
     });
 
     $("pubkey").addEventListener("input", () => {
+      selectedCsvLine = null;
       syncSelectToPubkeyInput();
     });
 
     $("pubkey").addEventListener("change", () => {
+      selectedCsvLine = null;
       syncSelectToPubkeyInput();
     });
+
+    $("epochStart").addEventListener("input", refreshCompareContext);
+    $("epochEnd").addEventListener("input", refreshCompareContext);
 
     document.querySelectorAll(".tab").forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -463,7 +619,7 @@
 
         const start = Number($("epochStart").value);
         const end = Number($("epochEnd").value);
-        const csvAgg = aggregateCsvByPubkey(csvRows, pubkey);
+        const csvAgg = getSelectedCsvAgg(pubkey);
         if (!csvAgg.rows.length) {
           throw new Error("CSV 中未找到该 Public Key 的记录");
         }
@@ -491,45 +647,58 @@
         : '<span class="badge err">不一致</span>';
     }
 
+    function selectedRowLabel(csvAgg) {
+      const r = csvAgg.rows[0];
+      if (!r) return "";
+      return `#${r.line} · ${r.date || "—"}`;
+    }
+
     function renderResult(result, csvAgg, start, end, fromManual = false) {
       const { csv, beaconcha, diff, perEpoch } = result;
       const sourceLabel = fromManual ? "手动粘贴" : "beaconcha";
 
       $("summary").innerHTML = `
         <div class="card">
-          <div class="title">CSV CL 总和 ${badge(diff.clMatch)}</div>
+          <div class="title">CSV CL（所选行）${badge(diff.clMatch)}</div>
           <div class="value">${formatEth(csv.clEth)} ETH</div>
-          <div class="hint">${csv.rowCount} 行求和</div>
+          <div class="hint">${selectedRowLabel(csvAgg)}</div>
         </div>
         <div class="card">
           <div class="title">${sourceLabel} CL（Epoch ${start}–${end}）${badge(diff.clMatch, beaconcha.missingEpochs.length)}</div>
           <div class="value">${formatEth(beaconcha.clEth)} ETH</div>
           <div class="hint">差值 ${formatDiff(diff.clEth)} ETH</div>
         </div>
+        <div class="card">
+          <div class="title">CSV EL（所选行）${badge(diff.elMatch)}</div>
+          <div class="value">${formatEth(csv.elEth)} ETH</div>
+        </div>
+        <div class="card">
+          <div class="title">${sourceLabel} EL（Epoch ${start}–${end}）${badge(diff.elMatch, beaconcha.missingEpochs.length)}</div>
+          <div class="value">${formatEth(beaconcha.elEth)} ETH</div>
+          <div class="hint">差值 ${formatDiff(diff.elEth)} ETH</div>
+        </div>
       `;
 
       $("csvRows").innerHTML =
-        "<strong>CSV 匹配行：</strong><br>" +
-        csvAgg.rows
-          .map(
-            (r) =>
-              `#${r.line} · ${r.date || "—"} · CL ${formatEth(r.clEth)} · index ${r.validatorIndex || "—"}`
-          )
-          .join("<br>");
+        "<strong>对比所用 CSV 行：</strong><br>" +
+        `#${csvAgg.rows[0].line} · ${csvAgg.rows[0].date || "—"} · CL ${formatEth(csvAgg.rows[0].clEth)} · EL ${formatEth(csvAgg.rows[0].elEth)} · index ${csvAgg.rows[0].validatorIndex || "—"}`;
 
       $("epochTable").innerHTML = perEpoch
         .map((r) => {
           return `<tr class="${r.missing ? "missing" : ""}">
             <td>${r.epoch}${r.missing ? " ⚠" : ""}</td>
             <td>${formatEth(r.clEth)}</td>
+            <td>${formatEth(r.elEth)}</td>
           </tr>`;
         })
         .join("");
 
       const footCl = perEpoch.reduce((s, r) => s + r.clEth, 0);
+      const footEl = perEpoch.reduce((s, r) => s + r.elEth, 0);
       $("epochFoot").innerHTML = `<tr>
         <th>合计 (${perEpoch.length} epochs)</th>
         <th>${formatEth(footCl)}</th>
+        <th>${formatEth(footEl)}</th>
       </tr>`;
 
       if (beaconcha.missingEpochs.length) {
@@ -537,6 +706,8 @@
           `<br><span class="badge warn">${sourceLabel} 缺少 epoch：${beaconcha.missingEpochs.join(", ")}</span>`;
       }
     }
+
+    refreshCompareContext();
   </script>
 </body>
 </html>

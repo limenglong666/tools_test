@@ -35,6 +35,7 @@ export function parseCsv(text) {
   const idx = {
     publicKey: findCol(header, ["Public Key", "public key", "pubkey"]),
     cl: findCol(header, ["CL Rewards Generated", "CL Rewards", "CL Reward"]),
+    el: findCol(header, ["EL Rewards Generated", "EL Rewards", "EL Reward"]),
     validatorIndex: findCol(header, ["Validator Index ID", "Validator Index", "validator_index"]),
     date: findCol(header, ["Date", "date"]),
   };
@@ -53,6 +54,7 @@ export function parseCsv(text) {
       publicKey,
       validatorIndex: idx.validatorIndex >= 0 ? cols[idx.validatorIndex]?.trim() : "",
       clEth: parseFloat(cols[idx.cl]) || 0,
+      elEth: idx.el >= 0 ? parseFloat(cols[idx.el]) || 0 : 0,
     });
   }
   return { header, rows };
@@ -91,13 +93,25 @@ export function aggregateCsvByPubkey(rows, pubkey) {
   const pk = normalizePubkey(pubkey);
   const matched = rows.filter((r) => r.publicKey === pk);
   if (!matched.length) {
-    return { publicKey: pk, rows: [], clEth: 0 };
+    return { publicKey: pk, rows: [], clEth: 0, elEth: 0 };
   }
   return {
     publicKey: pk,
     validatorIndex: matched[0].validatorIndex,
     rows: matched,
     clEth: matched.reduce((s, r) => s + r.clEth, 0),
+    elEth: matched.reduce((s, r) => s + r.elEth, 0),
+  };
+}
+
+export function csvAggFromRow(row) {
+  if (!row) return { rows: [], clEth: 0, elEth: 0 };
+  return {
+    publicKey: row.publicKey,
+    validatorIndex: row.validatorIndex,
+    rows: [row],
+    clEth: row.clEth,
+    elEth: row.elEth,
   };
 }
 
@@ -365,29 +379,40 @@ export function filterEpochRange(rows, startEpoch, endEpoch) {
 
 export function compareRewards(csvAgg, epochRows) {
   const beaconClGwei = epochRows.reduce((s, r) => s + (r.clGwei ?? 0n), 0n);
+  const beaconElWei = epochRows.reduce((s, r) => s + (r.elWei ?? 0n), 0n);
   const csvClGwei = ethToGweiBigInt(csvAgg.clEth);
+  const csvElWei = ethToWeiBigInt(csvAgg.elEth ?? 0);
   const clDiffGwei = csvClGwei - beaconClGwei;
+  const elDiffWei = csvElWei - beaconElWei;
 
   return {
     csv: {
       clEth: csvAgg.clEth,
+      elEth: csvAgg.elEth ?? 0,
       clGwei: csvClGwei,
+      elWei: csvElWei,
       rowCount: csvAgg.rows.length,
     },
     beaconcha: {
       clEth: gweiBigIntToEth(beaconClGwei),
+      elEth: weiBigIntToEth(beaconElWei),
       clGwei: beaconClGwei,
+      elWei: beaconElWei,
       epochCount: epochRows.filter((r) => !r.missing).length,
       missingEpochs: epochRows.filter((r) => r.missing).map((r) => r.epoch),
     },
     diff: {
       clEth: gweiBigIntToEth(clDiffGwei),
+      elEth: weiBigIntToEth(elDiffWei),
       clGwei: clDiffGwei,
+      elWei: elDiffWei,
       clMatch: clDiffGwei === 0n,
+      elMatch: elDiffWei === 0n,
     },
     perEpoch: epochRows.map((r) => ({
       epoch: r.epoch,
       clEth: r.clEth ?? gweiBigIntToEth(r.clGwei ?? 0n),
+      elEth: r.elEth ?? weiBigIntToEth(r.elWei ?? 0n),
       missing: !!r.missing,
     })),
   };
