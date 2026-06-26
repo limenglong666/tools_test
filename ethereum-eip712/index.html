@@ -1,0 +1,1188 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>EIP-712 Debugger · Ethereum</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #0c0e12;
+      --surface: #141820;
+      --border: #2a3140;
+      --text: #e8ecf4;
+      --muted: #8b95a8;
+      --accent: #3d8bfd;
+      --accent-dim: rgba(61, 139, 253, 0.15);
+      --success: #34d399;
+      --warn: #fbbf24;
+      --error: #f87171;
+      --radius: 10px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Instrument Sans", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      background-image:
+        radial-gradient(ellipse 80% 50% at 50% -20%, rgba(61, 139, 253, 0.12), transparent),
+        radial-gradient(ellipse 60% 40% at 100% 100%, rgba(52, 211, 153, 0.06), transparent);
+    }
+    .wrap {
+      max-width: 920px;
+      margin: 0 auto;
+      padding: 2rem 1.25rem 4rem;
+    }
+    header {
+      margin-bottom: 2rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 1.5rem;
+    }
+    h1 {
+      font-size: 1.75rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      margin: 0 0 0.35rem;
+    }
+    .sub {
+      color: var(--muted);
+      font-size: 0.95rem;
+      max-width: 52ch;
+    }
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: center;
+      margin-bottom: 1.25rem;
+    }
+    button, select {
+      font-family: inherit;
+      font-size: 0.875rem;
+      font-weight: 600;
+      border-radius: var(--radius);
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      padding: 0.55rem 1rem;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    button:hover, select:hover {
+      border-color: var(--accent);
+      background: var(--accent-dim);
+    }
+    button.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+    button.primary:hover { filter: brightness(1.08); }
+    button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+    .badge {
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 0.2rem 0.5rem;
+      border-radius: 6px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+    .badge.ok { color: var(--success); border-color: rgba(52, 211, 153, 0.35); }
+    section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 1.25rem 1.35rem;
+      margin-bottom: 1.25rem;
+    }
+    section h2 {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin: 0 0 1rem;
+      font-weight: 600;
+    }
+    textarea {
+      width: 100%;
+      min-height: 280px;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.78rem;
+      line-height: 1.45;
+      padding: 1rem;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: #0a0c10;
+      color: var(--text);
+      resize: vertical;
+    }
+    textarea:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-dim);
+    }
+    .out {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.75rem;
+      word-break: break-all;
+      padding: 0.85rem 1rem;
+      background: #0a0c10;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      min-height: 2.5rem;
+      color: var(--muted);
+    }
+    .out.has-val { color: var(--success); }
+    .msg {
+      font-size: 0.85rem;
+      margin-top: 0.5rem;
+    }
+    .msg.err { color: var(--error); }
+    .msg.ok { color: var(--success); }
+    label { font-size: 0.8rem; color: var(--muted); display: block; margin-bottom: 0.35rem; }
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+    @media (max-width: 640px) { .grid-2 { grid-template-columns: 1fr; } }
+    .tabs {
+      display: flex;
+      gap: 0.25rem;
+      margin-bottom: 1rem;
+    }
+    .tabs button {
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      border-radius: 0;
+      padding: 0.4rem 0.75rem;
+      color: var(--muted);
+    }
+    .tabs button.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+    .wallet-bar {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1.25rem;
+      background: var(--surface);
+    }
+    .wallet-bar.disconnected {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 1rem;
+    }
+    .wallet-bar.connected {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 1rem;
+      align-items: start;
+    }
+    @media (max-width: 560px) {
+      .wallet-bar.connected { grid-template-columns: 1fr; }
+    }
+    .wallet-hint {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin: 0.35rem 0 0;
+      max-width: 36rem;
+    }
+    .wallet-connected-main {
+      display: flex;
+      flex-direction: column;
+      gap: 0.65rem;
+    }
+    .wallet-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--success);
+    }
+    .wallet-status::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--success);
+      box-shadow: 0 0 10px var(--success);
+    }
+    .wallet-addr-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .wallet-addr {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.85rem;
+      word-break: break-all;
+      color: var(--text);
+    }
+    .wallet-addr-trunc { display: none; }
+    @media (max-width: 480px) {
+      .wallet-addr-full { display: none; }
+      .wallet-addr-trunc { display: inline; }
+    }
+    button.ghost, button.danger {
+      font-size: 0.8rem;
+      padding: 0.45rem 0.85rem;
+    }
+    button.ghost {
+      background: transparent;
+      border-color: var(--border);
+    }
+    button.danger {
+      background: rgba(248, 113, 113, 0.1);
+      border-color: rgba(248, 113, 113, 0.35);
+      color: var(--error);
+    }
+    button.danger:hover {
+      background: rgba(248, 113, 113, 0.18);
+      border-color: var(--error);
+    }
+    .wallet-chain {
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+    .wallet-chain strong { color: var(--text); }
+    .wallet-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      align-items: stretch;
+    }
+    .preset-select {
+      min-width: min(100%, 22rem);
+    }
+    .radio-line {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.5rem;
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-bottom: 0.35rem;
+      cursor: pointer;
+    }
+    .radio-line input {
+      margin-top: 0.2rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>EIP-712 Debugger</h1>
+      <p class="sub">在以太坊（及兼容链）上调试 typed data 签名：编辑载荷、计算 digest、<code style="color:var(--accent)">eth_signTypedData_v4</code> 签名与链下验签。</p>
+    </header>
+
+    <div id="walletBar" class="wallet-bar disconnected">
+      <div id="walletDisconnected">
+        <button type="button" id="btnConnect" class="primary">连接钱包</button>
+        <p class="wallet-hint">使用 MetaMask、Rabby、OKX 等注入式钱包。连接后可签名；断开将清除本页授权状态（若钱包支持撤销站点权限）。</p>
+      </div>
+      <div id="walletConnected" hidden>
+        <div class="wallet-connected-main">
+          <span class="wallet-status">已连接</span>
+          <div class="wallet-addr-row">
+            <span id="walletAddrFull" class="wallet-addr wallet-addr-full"></span>
+            <span id="walletAddrTrunc" class="wallet-addr wallet-addr-trunc"></span>
+            <button type="button" id="btnCopyAddr" class="ghost">复制地址</button>
+          </div>
+          <p class="wallet-chain" id="walletChainLine"></p>
+        </div>
+        <div class="wallet-actions">
+          <button type="button" id="btnDisconnect" class="danger">断开连接</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="tabs" role="tablist">
+      <button type="button" class="tab active" data-tab="standard">标准 EIP-712</button>
+      <button type="button" class="tab" data-tab="permit">Permit（EIP-2612）</button>
+    </div>
+
+    <section>
+      <h2>EIP-712 Payload（JSON）</h2>
+      <div class="row" style="margin-bottom:0.75rem;align-items:flex-end">
+        <div style="flex:1;min-width:200px">
+          <label for="preset">预设样例</label>
+          <select id="preset" class="preset-select" style="width:100%;margin-top:0.35rem">
+            <option value="">— 选择一项加载到编辑器 —</option>
+            <optgroup label="经典 / 教程">
+              <option value="mail">EIP-712 规范示例 · Mail（Person 嵌套）</option>
+            </optgroup>
+            <optgroup label="EIP-2612 Permit（代币授权）">
+              <option value="permit_usdc">USDC · Permit</option>
+              <option value="permit_dai">DAI · Permit</option>
+              <option value="permit_uni">Uniswap UNI · Permit</option>
+            </optgroup>
+            <optgroup label="Permit2（Uniswap）">
+              <option value="permit2_single">Permit2 · PermitSingle</option>
+              <option value="permit2_batch">Permit2 · PermitBatch</option>
+              <option value="permit2_transfer">Permit2 · PermitTransferFrom</option>
+            </optgroup>
+            <optgroup label="治理 / 元交易">
+              <option value="governor_vote">Governor · Vote（提案投票）</option>
+              <option value="forward_request">ERC2771 · ForwardRequest</option>
+            </optgroup>
+            <optgroup label="订单 / 通用结构">
+              <option value="simple_order">简单 Order（uint256 + address）</option>
+              <option value="listing">NFT Listing（清单价 + 过期时间）</option>
+            </optgroup>
+          </select>
+        </div>
+        <button type="button" id="btnFormat">格式化 JSON</button>
+      </div>
+      <textarea id="payload" spellcheck="false" aria-label="EIP-712 JSON"></textarea>
+      <p id="parseErr" class="msg err" style="display:none"></p>
+    </section>
+
+    <section>
+      <h2>哈希与签名</h2>
+      <div class="row">
+        <button type="button" id="btnHash">计算 EIP-712 Hash</button>
+        <button type="button" id="btnSign" class="primary" disabled>使用钱包签名</button>
+      </div>
+      <label>Typed data hash（keccak256 域分隔符 + 类型哈希 + 消息哈希）</label>
+      <div id="hashOut" class="out">—</div>
+      <label style="margin-top:1rem">签名（0x… 130 字符）</label>
+      <div id="sigOut" class="out">—</div>
+      <p id="signMsg" class="msg"></p>
+    </section>
+
+    <section>
+      <h2>验签（链下恢复地址）</h2>
+      <label>粘贴签名（hex）</label>
+      <textarea id="verifySig" rows="3" placeholder="0x…" style="min-height:4.5rem"></textarea>
+      <div class="verify-source" style="margin-top:0.85rem">
+        <span class="label" style="margin-bottom:0.4rem;display:block;color:var(--muted);font-size:0.8rem">验签使用的载荷</span>
+        <label class="radio-line"
+          ><input type="radio" name="verifySrc" id="verifySrcLast" value="last" disabled />
+          与钱包签名时提交的 JSON 完全一致（签名成功后可选，验签最稳）</label
+        >
+        <label class="radio-line"
+          ><input type="radio" name="verifySrc" id="verifySrcEditor" value="editor" checked />
+          当前下方编辑器里的 JSON</label
+        >
+      </div>
+      <div class="row" style="margin-top:0.75rem">
+        <button type="button" id="btnVerify">验证签名</button>
+        <button type="button" id="btnSplit">拆分为 r / s / v</button>
+      </div>
+      <label>恢复出的 signer（与 MetaMask 同库算法）</label>
+      <div id="recovered" class="out">—</div>
+      <label style="margin-top:0.65rem">Ethers 恢复结果（对照）</label>
+      <div id="recoveredEthers" class="out" style="font-size:0.7rem">—</div>
+      <p class="wallet-hint" style="margin-top:0.75rem">
+        <strong>为何会对不上？</strong>① 应用「编辑器」验签但签名后改动了 JSON；② 大整数在 JSON
+        里请用<strong>字符串</strong>，不要用 JS 会丢精度的数字；③ 请优先选「与钱包签名时提交的
+        JSON」并确保签名框里是刚签出的那一笔。
+      </p>
+      <p id="verifyMsg" class="msg"></p>
+    </section>
+  </div>
+
+  <script>
+    const { TypedDataEncoder, verifyTypedData, Signature } = ethers;
+
+    const CHAIN_NAMES = {
+      1: "Ethereum 主网",
+      5: "Goerli",
+      11155111: "Sepolia",
+      17000: "Holesky",
+      137: "Polygon",
+      42161: "Arbitrum One",
+      10: "Optimism",
+      8453: "Base",
+      56: "BNB Chain",
+      43114: "Avalanche",
+      324: "zkSync Era",
+    };
+
+    function ts(secs) {
+      return String(Math.floor(Date.now() / 1000) + secs);
+    }
+
+    /** @param {string|null} acc connected address or empty */
+    const PRESET_BUILDERS = {
+      mail: () => ({
+        domain: {
+          name: "Ether Mail",
+          version: "1",
+          chainId: 1,
+          verifyingContract: "0xCcCCccccCCCCcCCCCCCcCcCccCcCCCcCcccccccC",
+        },
+        types: {
+          Person: [
+            { name: "name", type: "string" },
+            { name: "wallet", type: "address" },
+          ],
+          Mail: [
+            { name: "from", type: "Person" },
+            { name: "to", type: "Person" },
+            { name: "contents", type: "string" },
+          ],
+        },
+        primaryType: "Mail",
+        message: {
+          from: { name: "Cow", wallet: "0xCD2a3d9F938E13CD947Ec05AbC7FE734Df8DD826" },
+          to: { name: "Bob", wallet: "0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB" },
+          contents: "Hello, Bob!",
+        },
+      }),
+      permit_usdc: (acc) => ({
+        domain: {
+          name: "USD Coin",
+          version: "2",
+          chainId: 1,
+          verifyingContract: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        },
+        types: {
+          Permit: [
+            { name: "owner", type: "address" },
+            { name: "spender", type: "address" },
+            { name: "value", type: "uint256" },
+            { name: "nonce", type: "uint256" },
+            { name: "deadline", type: "uint256" },
+          ],
+        },
+        primaryType: "Permit",
+        message: {
+          owner: acc || "0x0000000000000000000000000000000000000000",
+          spender: "0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45",
+          value: "1000000",
+          nonce: "0",
+          deadline: ts(86400 * 365),
+        },
+      }),
+      permit_dai: (acc) => ({
+        domain: {
+          name: "Dai Stablecoin",
+          version: "1",
+          chainId: 1,
+          verifyingContract: "0x6B175474E89094C44Da98b954EedeAC495271d0F",
+        },
+        types: {
+          Permit: [
+            { name: "holder", type: "address" },
+            { name: "spender", type: "address" },
+            { name: "nonce", type: "uint256" },
+            { name: "expiry", type: "uint256" },
+            { name: "allowed", type: "bool" },
+          ],
+        },
+        primaryType: "Permit",
+        message: {
+          holder: acc || "0x0000000000000000000000000000000000000000",
+          spender: "0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45",
+          nonce: "0",
+          expiry: ts(86400 * 365),
+          allowed: true,
+        },
+      }),
+      permit_uni: (acc) => ({
+        domain: {
+          name: "Uniswap",
+          version: "1",
+          chainId: 1,
+          verifyingContract: "0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984",
+        },
+        types: {
+          Permit: [
+            { name: "owner", type: "address" },
+            { name: "spender", type: "address" },
+            { name: "value", type: "uint256" },
+            { name: "nonce", type: "uint256" },
+            { name: "deadline", type: "uint256" },
+          ],
+        },
+        primaryType: "Permit",
+        message: {
+          owner: acc || "0x0000000000000000000000000000000000000000",
+          spender: "0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45",
+          value: ethers.MaxUint256.toString(),
+          nonce: "0",
+          deadline: ts(86400 * 365),
+        },
+      }),
+      permit2_single: () => ({
+        domain: {
+          name: "Permit2",
+          chainId: 1,
+          verifyingContract: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+        },
+        types: {
+          PermitSingle: [
+            { name: "details", type: "PermitDetails" },
+            { name: "spender", type: "address" },
+            { name: "sigDeadline", type: "uint256" },
+          ],
+          PermitDetails: [
+            { name: "token", type: "address" },
+            { name: "amount", type: "uint160" },
+            { name: "expiration", type: "uint48" },
+            { name: "nonce", type: "uint48" },
+          ],
+        },
+        primaryType: "PermitSingle",
+        message: {
+          details: {
+            token: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+            amount: "1000000",
+            expiration: ts(86400 * 365),
+            nonce: "0",
+          },
+          spender: "0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45",
+          sigDeadline: ts(86400),
+        },
+      }),
+      permit2_batch: () => ({
+        domain: {
+          name: "Permit2",
+          chainId: 1,
+          verifyingContract: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+        },
+        types: {
+          PermitBatch: [
+            { name: "details", type: "PermitDetails[]" },
+            { name: "spender", type: "address" },
+            { name: "sigDeadline", type: "uint256" },
+          ],
+          PermitDetails: [
+            { name: "token", type: "address" },
+            { name: "amount", type: "uint160" },
+            { name: "expiration", type: "uint48" },
+            { name: "nonce", type: "uint48" },
+          ],
+        },
+        primaryType: "PermitBatch",
+        message: {
+          details: [
+            {
+              token: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+              amount: "500000",
+              expiration: ts(86400 * 180),
+              nonce: "0",
+            },
+            {
+              token: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+              amount: "1000000000000000000",
+              expiration: ts(86400 * 180),
+              nonce: "0",
+            },
+          ],
+          spender: "0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45",
+          sigDeadline: ts(86400),
+        },
+      }),
+      permit2_transfer: () => ({
+        domain: {
+          name: "Permit2",
+          chainId: 1,
+          verifyingContract: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+        },
+        types: {
+          PermitTransferFrom: [
+            { name: "permitted", type: "TokenPermissions" },
+            { name: "nonce", type: "uint256" },
+            { name: "deadline", type: "uint256" },
+          ],
+          TokenPermissions: [
+            { name: "token", type: "address" },
+            { name: "amount", type: "uint256" },
+          ],
+        },
+        primaryType: "PermitTransferFrom",
+        message: {
+          permitted: {
+            token: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+            amount: "1000000",
+          },
+          nonce: "0",
+          deadline: ts(3600),
+        },
+      }),
+      governor_vote: (acc) => ({
+        domain: {
+          name: "MyGovernor",
+          version: "1",
+          chainId: 1,
+          verifyingContract: "0x0000000000000000000000000000000000000001",
+        },
+        types: {
+          Vote: [
+            { name: "proposalId", type: "uint256" },
+            { name: "support", type: "uint8" },
+            { name: "voter", type: "address" },
+          ],
+        },
+        primaryType: "Vote",
+        message: {
+          proposalId: "1",
+          support: "1",
+          voter: acc || "0x0000000000000000000000000000000000000000",
+        },
+      }),
+      forward_request: (acc) => ({
+        domain: {
+          name: "MinimalForwarder",
+          version: "0.0.1",
+          chainId: 1,
+          verifyingContract: "0x0000000000000000000000000000000000000002",
+        },
+        types: {
+          ForwardRequest: [
+            { name: "from", type: "address" },
+            { name: "to", type: "address" },
+            { name: "value", type: "uint256" },
+            { name: "gas", type: "uint256" },
+            { name: "nonce", type: "uint256" },
+            { name: "data", type: "bytes" },
+          ],
+        },
+        primaryType: "ForwardRequest",
+        message: {
+          from: acc || "0x0000000000000000000000000000000000000000",
+          to: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+          value: "0",
+          gas: "100000",
+          nonce: "0",
+          data: "0x",
+        },
+      }),
+      simple_order: (acc) => ({
+        domain: {
+          name: "ExampleMarket",
+          version: "1",
+          chainId: 1,
+          verifyingContract: "0x0000000000000000000000000000000000000003",
+        },
+        types: {
+          Order: [
+            { name: "maker", type: "address" },
+            { name: "orderId", type: "uint256" },
+            { name: "priceWei", type: "uint256" },
+            { name: "salt", type: "uint256" },
+          ],
+        },
+        primaryType: "Order",
+        message: {
+          maker: acc || "0x0000000000000000000000000000000000000000",
+          orderId: "42",
+          priceWei: "1000000000000000000",
+          salt: String(Date.now()),
+        },
+      }),
+      listing: (acc) => ({
+        domain: {
+          name: "NFT Marketplace",
+          version: "1",
+          chainId: 1,
+          verifyingContract: "0x0000000000000000000000000000000000000004",
+        },
+        types: {
+          Listing: [
+            { name: "seller", type: "address" },
+            { name: "tokenContract", type: "address" },
+            { name: "tokenId", type: "uint256" },
+            { name: "price", type: "uint256" },
+            { name: "paymentToken", type: "address" },
+            { name: "deadline", type: "uint256" },
+            { name: "nonce", type: "uint256" },
+          ],
+        },
+        primaryType: "Listing",
+        message: {
+          seller: acc || "0x0000000000000000000000000000000000000000",
+          tokenContract: "0xBC4CA0EdA7647A8aB7C2061c2E118A18a936f13D",
+          tokenId: "1234",
+          price: "50000000000000000000",
+          paymentToken: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+          deadline: ts(86400 * 7),
+          nonce: "0",
+        },
+      }),
+    };
+
+    let account = null;
+    let provider = null;
+    let walletListenersBound = false;
+    /** 与 eth_signTypedData_v4 第二个参数完全相同的 JSON 字符串，用于可靠验签 */
+    let lastSignPayloadJson = null;
+    let lastSignature = null;
+
+    let ethSigUtilPromise = null;
+    function loadEthSigUtil() {
+      if (!ethSigUtilPromise) {
+        ethSigUtilPromise = import("https://esm.sh/@metamask/eth-sig-util@7.0.1")
+          .catch(function () {
+            return import("https://cdn.jsdelivr.net/npm/@metamask/eth-sig-util@7.0.1/+esm");
+          })
+          .catch(function () {
+            return null;
+          });
+      }
+      return ethSigUtilPromise;
+    }
+
+    async function recoverWithMetaMaskLib(typedData, sig) {
+      const mod = await loadEthSigUtil();
+      if (!mod || typeof mod.recoverTypedSignature !== "function") return null;
+      try {
+        return mod.recoverTypedSignature({
+          data: {
+            types: typedData.types,
+            primaryType: typedData.primaryType,
+            domain: typedData.domain,
+            message: typedData.message,
+          },
+          signature: sig,
+          version: (mod.SignTypedDataVersion && mod.SignTypedDataVersion.V4) || "V4",
+        });
+      } catch {
+        return null;
+      }
+    }
+
+    function clearLastSignBundle() {
+      lastSignPayloadJson = null;
+      lastSignature = null;
+      const last = $("verifySrcLast");
+      if (last) {
+        last.disabled = true;
+        last.checked = false;
+      }
+      const ed = $("verifySrcEditor");
+      if (ed) ed.checked = true;
+    }
+
+    const $ = (id) => document.getElementById(id);
+    const payloadEl = $("payload");
+    const parseErr = $("parseErr");
+
+    function chainLabel(chainId) {
+      const n = Number(chainId);
+      const name = CHAIN_NAMES[n];
+      return name ? `${name} · chainId ${n}` : `chainId ${n}`;
+    }
+
+    function updateWalletUI() {
+      const bar = $("walletBar");
+      const disc = $("walletDisconnected");
+      const conn = $("walletConnected");
+      if (account) {
+        bar.classList.remove("disconnected");
+        bar.classList.add("connected");
+        disc.hidden = true;
+        conn.hidden = false;
+        $("walletAddrFull").textContent = account;
+        $("walletAddrTrunc").textContent =
+          account.slice(0, 6) + "…" + account.slice(-4);
+        $("btnSign").disabled = false;
+      } else {
+        bar.classList.add("disconnected");
+        bar.classList.remove("connected");
+        disc.hidden = false;
+        conn.hidden = true;
+        $("btnSign").disabled = true;
+        $("walletChainLine").textContent = "";
+      }
+    }
+
+    async function refreshChainLine() {
+      if (!account || !window.ethereum) return;
+      try {
+        const p = provider || new ethers.BrowserProvider(window.ethereum);
+        const net = await p.getNetwork();
+        $("walletChainLine").innerHTML =
+          "当前网络：<strong>" + chainLabel(net.chainId) + "</strong>";
+      } catch {
+        $("walletChainLine").textContent = "";
+      }
+    }
+
+    /** 钱包签名时 digest 中的 chainId 通常与「当前连接网络」一致，与 JSON 里写死的 1 不一致会导致验签地址错误 */
+    async function getWalletChainId() {
+      const p = provider || (window.ethereum && new ethers.BrowserProvider(window.ethereum));
+      if (!p) return null;
+      const net = await p.getNetwork();
+      return Number(net.chainId);
+    }
+
+    function withDomainChainId(t, chainId) {
+      return {
+        domain: { ...t.domain, chainId },
+        types: t.types,
+        primaryType: t.primaryType,
+        message: t.message,
+      };
+    }
+
+    async function attachCurrentChainToPreset(data) {
+      const cid = await getWalletChainId();
+      if (cid == null) return data;
+      const copy = JSON.parse(JSON.stringify(data));
+      copy.domain = { ...copy.domain, chainId: cid };
+      return copy;
+    }
+
+    function bindWalletEvents() {
+      if (walletListenersBound || !window.ethereum) return;
+      walletListenersBound = true;
+      window.ethereum.on("accountsChanged", (accs) => {
+        clearLastSignBundle();
+        if (!accs || accs.length === 0) {
+          account = null;
+          provider = null;
+          updateWalletUI();
+        } else {
+          account = ethers.getAddress(accs[0]);
+          updateWalletUI();
+          refreshChainLine();
+        }
+      });
+      window.ethereum.on("chainChanged", () => {
+        refreshChainLine();
+      });
+    }
+
+    async function disconnectWallet() {
+      if (window.ethereum?.request) {
+        try {
+          await window.ethereum.request({
+            method: "wallet_revokePermissions",
+            params: [{ eth_accounts: {} }],
+          });
+        } catch (_) {
+          /* 部分钱包不支持，仅清本地状态 */
+        }
+      }
+      account = null;
+      provider = null;
+      clearLastSignBundle();
+      updateWalletUI();
+    }
+
+    function normalizeTypedData(raw) {
+      const d = typeof raw === "string" ? JSON.parse(raw) : { ...raw };
+      if (!d.domain || !d.types || !d.primaryType || d.message === undefined)
+        throw new Error("需要 domain、types、primaryType、message");
+      const domain = { ...d.domain };
+      if (domain.chainId !== undefined) {
+        if (typeof domain.chainId === "string" && domain.chainId.startsWith("0x"))
+          domain.chainId = Number(BigInt(domain.chainId));
+        else domain.chainId = Number(domain.chainId);
+      }
+      const types = { ...d.types };
+      Object.keys(types).forEach((k) => {
+        if (k === "EIP712Domain") delete types[k];
+      });
+      return {
+        domain,
+        types,
+        primaryType: d.primaryType,
+        message: d.message,
+      };
+    }
+
+    function parsePayload() {
+      parseErr.style.display = "none";
+      const text = payloadEl.value.trim();
+      if (!text) throw new Error("JSON 为空");
+      return normalizeTypedData(JSON.parse(text));
+    }
+
+    function setPayload(obj) {
+      payloadEl.value = JSON.stringify(obj, null, 2);
+      parseErr.style.display = "none";
+    }
+
+    $("preset").addEventListener("change", async (e) => {
+      const v = e.target.value;
+      const fn = PRESET_BUILDERS[v];
+      if (!v || typeof fn !== "function") return;
+      let data = fn(account);
+      data = await attachCurrentChainToPreset(data);
+      setPayload(data);
+      e.target.value = "";
+    });
+
+    document.querySelectorAll(".tab").forEach((t) => {
+      t.addEventListener("click", async () => {
+        document.querySelectorAll(".tab").forEach((x) => x.classList.remove("active"));
+        t.classList.add("active");
+        const tab = t.dataset.tab;
+        let data =
+          tab === "permit" ? PRESET_BUILDERS.permit_usdc(account) : PRESET_BUILDERS.mail();
+        data = await attachCurrentChainToPreset(data);
+        setPayload(data);
+      });
+    });
+
+    $("btnFormat").addEventListener("click", () => {
+      try {
+        const t = parsePayload();
+        setPayload({ domain: t.domain, types: t.types, primaryType: t.primaryType, message: t.message });
+      } catch (err) {
+        parseErr.textContent = err.message || String(err);
+        parseErr.style.display = "block";
+      }
+    });
+
+    async function connect() {
+      if (!window.ethereum) {
+        alert("请安装 MetaMask 或其它注入式以太坊钱包");
+        return;
+      }
+      bindWalletEvents();
+      provider = new ethers.BrowserProvider(window.ethereum);
+      const accounts = await provider.send("eth_requestAccounts", []);
+      account = ethers.getAddress(accounts[0]);
+      updateWalletUI();
+      await refreshChainLine();
+      const text = payloadEl.value;
+      try {
+        const j = JSON.parse(text);
+        const m = j.message;
+        if (!m) return;
+        if (m.owner === "" || m.owner === "0x0000000000000000000000000000000000000000")
+          if (j.types?.Permit?.some((x) => x.name === "owner")) m.owner = account;
+        if (m.holder === "" || m.holder === "0x0000000000000000000000000000000000000000")
+          if (j.types?.Permit?.some((x) => x.name === "holder")) m.holder = account;
+        if (m.voter === "" || m.voter === "0x0000000000000000000000000000000000000000")
+          if (j.primaryType === "Vote") m.voter = account;
+        if (m.from === "" || m.from === "0x0000000000000000000000000000000000000000")
+          if (j.primaryType === "ForwardRequest") m.from = account;
+        if (m.maker === "" || m.maker === "0x0000000000000000000000000000000000000000")
+          if (j.primaryType === "Order") m.maker = account;
+        if (m.seller === "" || m.seller === "0x0000000000000000000000000000000000000000")
+          if (j.primaryType === "Listing") m.seller = account;
+        setPayload(j);
+      } catch (_) {}
+    }
+
+    $("btnConnect").addEventListener("click", () => connect().catch((e) => alert(e.message || e)));
+    $("btnDisconnect").addEventListener("click", () => disconnectWallet());
+    $("btnCopyAddr").addEventListener("click", async () => {
+      if (!account) return;
+      try {
+        await navigator.clipboard.writeText(account);
+        $("btnCopyAddr").textContent = "已复制";
+        setTimeout(() => {
+          $("btnCopyAddr").textContent = "复制地址";
+        }, 1600);
+      } catch {
+        prompt("复制地址", account);
+      }
+    });
+
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible" && account) refreshChainLine();
+    });
+
+    (async function initWalletFromProvider() {
+      if (!window.ethereum) return;
+      bindWalletEvents();
+      try {
+        const accs = await window.ethereum.request({ method: "eth_accounts" });
+        if (accs && accs.length) {
+          provider = new ethers.BrowserProvider(window.ethereum);
+          account = ethers.getAddress(accs[0]);
+          updateWalletUI();
+          refreshChainLine();
+        }
+      } catch (_) {}
+    })();
+
+    $("btnHash").addEventListener("click", () => {
+      try {
+        const t = parsePayload();
+        const hash = TypedDataEncoder.hash(t.domain, t.types, t.message);
+        $("hashOut").textContent = hash;
+        $("hashOut").classList.add("has-val");
+      } catch (err) {
+        parseErr.textContent = err.message || String(err);
+        parseErr.style.display = "block";
+        $("hashOut").textContent = "—";
+        $("hashOut").classList.remove("has-val");
+      }
+    });
+
+    $("btnSign").addEventListener("click", async () => {
+      const signMsg = $("signMsg");
+      signMsg.textContent = "";
+      signMsg.className = "msg";
+      if (!account || !window.ethereum) return;
+      try {
+        let t = parsePayload();
+        const walletCid = await getWalletChainId();
+        if (walletCid != null && Number(t.domain.chainId) !== walletCid) {
+          t = withDomainChainId(t, walletCid);
+          setPayload({
+            domain: t.domain,
+            types: t.types,
+            primaryType: t.primaryType,
+            message: t.message,
+          });
+          signMsg.textContent =
+            "已将 domain.chainId 同步为当前网络 " +
+            walletCid +
+            "。";
+          signMsg.classList.add("ok");
+        }
+        const typedData = {
+          types: t.types,
+          primaryType: t.primaryType,
+          domain: t.domain,
+          message: t.message,
+        };
+        const payloadJson = JSON.stringify(typedData);
+        const accts = await window.ethereum.request({ method: "eth_accounts" });
+        if (!accts || !accts.length)
+          throw new Error("钱包未返回账户，请重新连接");
+        const addrForWallet = accts[0];
+        const sig = await window.ethereum.request({
+          method: "eth_signTypedData_v4",
+          params: [addrForWallet, payloadJson],
+        });
+        lastSignPayloadJson = payloadJson;
+        lastSignature = sig;
+        $("verifySrcLast").disabled = false;
+        $("verifySrcLast").checked = true;
+        $("verifySrcEditor").checked = false;
+
+        $("sigOut").textContent = sig;
+        $("sigOut").classList.add("has-val");
+        $("verifySig").value = sig;
+        const tSigned = normalizeTypedData(JSON.parse(payloadJson));
+        const recMM = await recoverWithMetaMaskLib(
+          {
+            types: tSigned.types,
+            primaryType: tSigned.primaryType,
+            domain: tSigned.domain,
+            message: tSigned.message,
+          },
+          sig
+        );
+        const recEth = verifyTypedData(tSigned.domain, tSigned.types, tSigned.message, sig);
+        const expect = ethers.getAddress(addrForWallet);
+        const okMM = recMM && recMM.toLowerCase() === expect.toLowerCase();
+        const okEth = recEth.toLowerCase() === expect.toLowerCase();
+        if (okMM || okEth) {
+          signMsg.textContent =
+            (signMsg.textContent ? signMsg.textContent + " " : "") +
+            "签名成功。" +
+            (okMM
+              ? " MetaMask 同库验签与当前账户一致。"
+              : " Ethers 验签一致（MM 库未加载或结果一致）。");
+          signMsg.classList.remove("err");
+          signMsg.classList.add("ok");
+        } else {
+          signMsg.textContent =
+            (signMsg.textContent ? signMsg.textContent + " " : "") +
+            "签名已返回，但链下恢复地址与账户不一致（钱包可能改写了请求）。请查看验签区对照。";
+          signMsg.classList.add("err");
+        }
+      } catch (err) {
+        signMsg.textContent = err.message || String(err);
+        signMsg.classList.add("err");
+      }
+    });
+
+    $("btnVerify").addEventListener("click", async () => {
+      const verifyMsg = $("verifyMsg");
+      verifyMsg.textContent = "";
+      verifyMsg.className = "msg";
+      $("recoveredEthers").textContent = "—";
+      try {
+        let t;
+        const useLast =
+          $("verifySrcLast").checked &&
+          lastSignPayloadJson &&
+          !$("verifySrcLast").disabled;
+        if (useLast) {
+          t = normalizeTypedData(JSON.parse(lastSignPayloadJson));
+        } else {
+          t = parsePayload();
+        }
+        let sig = $("verifySig").value.trim();
+        if (!sig) throw new Error("请粘贴签名");
+        if (!sig.startsWith("0x")) sig = "0x" + sig;
+        const recMM = await recoverWithMetaMaskLib(
+          {
+            types: t.types,
+            primaryType: t.primaryType,
+            domain: t.domain,
+            message: t.message,
+          },
+          sig
+        );
+        const recEth = verifyTypedData(t.domain, t.types, t.message, sig);
+        const primary = recMM || recEth;
+        $("recovered").textContent =
+          primary + (recMM ? "（@metamask/eth-sig-util）" : "（ethers，MM 库加载失败时以此为准）");
+        $("recovered").classList.add("has-val");
+        $("recoveredEthers").textContent = "ethers: " + recEth;
+        const parts = [];
+        if (useLast) parts.push("已用签名当刻提交的 JSON");
+        if (recMM && recEth.toLowerCase() !== recMM.toLowerCase())
+          parts.push("MM 库与 ethers 结果不同，钱包侧与 MM 库一致");
+        const match =
+          account &&
+          primary &&
+          primary.toLowerCase() === account.toLowerCase();
+        if (match) {
+          parts.push("与当前连接地址一致");
+          verifyMsg.textContent = parts.join("。") + "。";
+          verifyMsg.className = "msg ok";
+        } else if (account) {
+          parts.push(
+            "与当前连接地址不一致：请勾选「签名时提交的 JSON」、勿改动签名框内容，或换用 MetaMask 试签"
+          );
+          verifyMsg.textContent = parts.filter(Boolean).join("。") + "。";
+          verifyMsg.className = "msg err";
+        } else {
+          verifyMsg.textContent = parts.filter(Boolean).join("。") || "验签完成。";
+          verifyMsg.className = "msg ok";
+        }
+      } catch (err) {
+        verifyMsg.textContent = err.message || String(err);
+        verifyMsg.classList.add("err");
+        $("recovered").textContent = "—";
+        $("recovered").classList.remove("has-val");
+      }
+    });
+
+    $("btnSplit").addEventListener("click", () => {
+      let sig = $("verifySig").value.trim();
+      if (!sig.startsWith("0x")) sig = "0x" + sig;
+      try {
+        const s = Signature.from(sig);
+        alert("r: " + s.r + "\n\ns: " + s.s + "\n\nv: " + s.v + " (yParity: " + s.yParity + ")");
+      } catch {
+        alert("无效签名或长度不足（需 65 字节）");
+      }
+    });
+
+    setPayload(PRESET_BUILDERS.mail());
+  </script>
+</body>
+</html>

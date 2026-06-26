@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Validator Rewards Compare · beaconcha.in ↔ CSV</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0c0e12;
+      --surface: #141820;
+      --border: #2a3140;
+      --text: #e8ecf4;
+      --muted: #8b95a8;
+      --accent: #3d8bfd;
+      --accent-dim: rgba(61, 139, 253, 0.12);
+      --success: #34d399;
+      --error: #f87171;
+      --warn: #fbbf24;
+      --radius: 10px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Instrument Sans", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      background-image: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(61, 139, 253, 0.1), transparent);
+    }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+    a.back { color: var(--muted); font-size: 0.875rem; text-decoration: none; }
+    a.back:hover { color: var(--accent); }
+    h1 { font-size: 1.75rem; font-weight: 700; letter-spacing: -0.03em; margin: 1.25rem 0 0.35rem; }
+    .sub { color: var(--muted); margin: 0 0 1.5rem; max-width: 70ch; }
+    section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 1.25rem 1.35rem;
+      margin-bottom: 1rem;
+    }
+    section h2 {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin: 0 0 1rem;
+      font-weight: 600;
+    }
+    label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 0.35rem; }
+    input[type="text"], input[type="number"], textarea, select {
+      width: 100%;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.78rem;
+      padding: 0.65rem 0.75rem;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: #0a0c10;
+      color: var(--text);
+    }
+    textarea { min-height: 140px; resize: vertical; }
+    input:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
+    .row { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: flex-end; margin-bottom: 0.85rem; }
+    .field { flex: 1; min-width: 180px; }
+    .field.sm { flex: 0 0 140px; min-width: 120px; }
+    button {
+      font-family: inherit;
+      font-size: 0.875rem;
+      font-weight: 600;
+      border-radius: var(--radius);
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      padding: 0.55rem 1rem;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    button:hover { border-color: var(--accent); background: var(--accent-dim); }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    button.primary:hover { filter: brightness(1.08); }
+    .hint { font-size: 0.8rem; color: var(--muted); margin: 0.5rem 0 0; }
+    .hint code { color: var(--accent); font-size: 0.78rem; }
+    .msg { font-size: 0.85rem; margin-top: 0.5rem; }
+    .msg.err { color: var(--error); }
+    .msg.ok { color: var(--success); }
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 0.75rem;
+      margin-top: 0.5rem;
+    }
+    .card {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.85rem 1rem;
+      background: #0a0c10;
+    }
+    .card .title { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+    .card .value { font-family: "JetBrains Mono", monospace; font-size: 0.85rem; margin-top: 0.35rem; word-break: break-all; }
+    .badge {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 0.15rem 0.45rem;
+      border-radius: 6px;
+      margin-left: 0.35rem;
+      vertical-align: middle;
+    }
+    .badge.ok { background: rgba(52, 211, 153, 0.15); color: var(--success); }
+    .badge.err { background: rgba(248, 113, 113, 0.15); color: var(--error); }
+    .badge.warn { background: rgba(251, 191, 36, 0.15); color: var(--warn); }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.74rem;
+    }
+    th, td {
+      border-bottom: 1px solid var(--border);
+      padding: 0.55rem 0.45rem;
+      text-align: left;
+    }
+    th { color: var(--muted); font-weight: 600; }
+    tr.missing td { color: var(--warn); }
+    .table-wrap { overflow-x: auto; margin-top: 0.75rem; }
+    .csv-rows { margin-top: 0.75rem; font-size: 0.8rem; color: var(--muted); }
+    .pubkey-picker {
+      margin-top: 0.75rem;
+      padding-top: 0.75rem;
+      border-top: 1px solid var(--border);
+    }
+    .pubkey-picker.disabled { opacity: 0.55; pointer-events: none; }
+    select { font-family: "JetBrains Mono", monospace; font-size: 0.76rem; }
+    .tabs { display: flex; gap: 0.25rem; margin-bottom: 1rem; flex-wrap: wrap; }
+    .tabs button {
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 0.35rem 0.85rem;
+      color: var(--muted);
+      font-size: 0.8rem;
+    }
+    .tabs button.active {
+      color: var(--accent);
+      border-color: var(--accent);
+      background: var(--accent-dim);
+    }
+    .source-panel[hidden] { display: none; }
+    details { margin-top: 0.75rem; }
+    summary { cursor: pointer; color: var(--accent); font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <a class="back" href="../">← 返回工具列表</a>
+    <h1>Validator Rewards Compare</h1>
+    <p class="sub">
+      对比本地 CSV 中某台验证器的 <strong>CL Rewards</strong>，
+      与 beaconcha.in Validator History（按 Epoch 汇总）是否一致。
+    </p>
+
+    <section>
+      <h2>1 · 本地 CSV</h2>
+      <div class="row">
+        <div class="field">
+          <label for="csvFile">上传 CSV 文件</label>
+          <input type="file" id="csvFile" accept=".csv,text/csv" />
+        </div>
+        <button type="button" id="btnLoadExample">加载示例文件</button>
+      </div>
+      <p id="csvInfo" class="hint">尚未加载 CSV</p>
+    </section>
+
+    <section>
+      <h2>2 · 验证器与 Epoch 范围</h2>
+      <div class="row">
+        <div class="field">
+          <label for="pubkey">Public Key（手动输入）</label>
+          <input type="text" id="pubkey" spellcheck="false"
+            value="0x8001ff793be4d78da2175d4c67b0e51f4862a48c5b5834a9bc1a80e3912a8c52d778b02287605300257f1c6a7ad1f9a2" />
+        </div>
+        <div class="field sm">
+          <label for="epochStart">起始 Epoch</label>
+          <input type="number" id="epochStart" value="457380" />
+        </div>
+        <div class="field sm">
+          <label for="epochEnd">结束 Epoch</label>
+          <input type="number" id="epochEnd" value="457394" />
+        </div>
+      </div>
+      <div id="pubkeyPicker" class="pubkey-picker disabled">
+        <label for="pubkeySearch">从 CSV 选择验证器</label>
+        <input type="text" id="pubkeySearch" placeholder="搜索 Validator Index 或 Public Key…" disabled />
+        <select id="pubkeySelect" size="8" disabled style="margin-top:0.5rem">
+          <option value="">— 加载 CSV 后可选择 —</option>
+        </select>
+        <p id="pubkeyPickHint" class="hint">加载 CSV 后，可搜索并点选验证器，会自动填入上方 Public Key。</p>
+      </div>
+      <p class="hint" id="validatorLinkHint">
+        示例验证器 index：<code id="validatorIndexHint">1283884</code> ·
+        <a id="beaconLink" href="https://beaconcha.in/validator/0x8001ff793be4d78da2175d4c67b0e51f4862a48c5b5834a9bc1a80e3912a8c52d778b02287605300257f1c6a7ad1f9a2" target="_blank" rel="noopener" style="color:var(--accent)">beaconcha.in 页面</a>
+      </p>
+    </section>
+
+    <section>
+      <h2>3 · beaconcha.in Validator History</h2>
+      <div class="tabs" role="tablist">
+        <button type="button" class="tab active" data-tab="json">API JSON / HTML</button>
+        <button type="button" class="tab" data-tab="manual">手动逐条粘贴</button>
+      </div>
+
+      <div id="panelJson" class="source-panel">
+        <p class="hint" style="margin-top:0">
+          在 beaconcha.in 验证器页面打开 Console 运行 <code>beaconcha-extract.js</code>，
+          或从 Network 面板复制 <code>incomedetailhistory</code> 接口 JSON。
+        </p>
+        <label for="beaconData" style="margin-top:0.75rem">粘贴 API JSON / 表格 HTML</label>
+        <textarea id="beaconData" spellcheck="false" placeholder='{"status":"OK","data":[...]}'></textarea>
+      </div>
+
+      <div id="panelManual" class="source-panel" hidden>
+        <p class="hint" style="margin-top:0">
+          从 beaconcha.in 页面 <strong>Validator History</strong> 表格直接复制粘贴，每行一条。
+          格式示例：<code>457448	+8609 GWei</code>（Tab 分隔，含 <code>GWei</code> 单位）。
+        </p>
+        <label for="manualEpochData" style="margin-top:0.75rem">手动粘贴各 Epoch CL 结果</label>
+        <textarea id="manualEpochData" spellcheck="false" placeholder="457448	+8609 GWei
+457447	+8612 GWei
+457446	+8461 GWei
+457445	+8614 GWei"></textarea>
+        <p id="manualPreview" class="hint">粘贴后自动预览解析条数与 CL 合计。</p>
+        <details>
+          <summary>支持的粘贴格式</summary>
+          <p class="hint">
+            <strong>beaconcha 页面复制（推荐）</strong><br />
+            <code>457448	+8609 GWei</code><br />
+            <code>457447	+8612 GWei</code><br />
+            <strong>或 ETH 小数</strong><br />
+            <code>457394 0.000012345</code><br />
+            以 <code>#</code> 开头的行会被忽略。
+          </p>
+        </details>
+      </div>
+
+      <div class="row" style="margin-top:0.75rem">
+        <button type="button" id="btnCompare" class="primary">开始对比</button>
+      </div>
+      <p id="compareErr" class="msg err" style="display:none"></p>
+    </section>
+
+    <section id="resultSection" hidden>
+      <h2>对比结果</h2>
+      <div id="summary" class="summary"></div>
+      <div id="csvRows" class="csv-rows"></div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Epoch</th>
+              <th>beaconcha CL (ETH)</th>
+            </tr>
+          </thead>
+          <tbody id="epochTable"></tbody>
+          <tfoot id="epochFoot"></tfoot>
+        </table>
+      </div>
+      <details>
+        <summary>CL 计算说明</summary>
+        <p class="hint">
+          beaconcha CL = 各 attestation / proposer / sync / slashing 奖励项之和 − 惩罚项（单位 gwei，来自
+          <code>incomedetailhistory</code>）。
+          CSV 侧对同一 Public Key 的多行（如不同导出批次）会<strong>求和</strong>后再与 beaconcha 区间 CL 总和对比。
+        </p>
+      </details>
+    </section>
+  </div>
+
+  <script type="module">
+    import {
+      parseCsv,
+      aggregateCsvByPubkey,
+      listValidatorsFromCsv,
+      resolveBeaconchaRows,
+      filterEpochRange,
+      compareRewards,
+      formatEth,
+      formatDiff,
+      normalizePubkey,
+      truncatePubkey,
+      summarizeManualEntries,
+    } from "./compare.js";
+
+    let csvRows = [];
+    let csvValidators = [];
+    let activeBeaconTab = "json";
+
+    const $ = (id) => document.getElementById(id);
+
+    function updateBeaconLink(pubkey, validatorIndex) {
+      const pk = normalizePubkey(pubkey);
+      if (!pk) return;
+      $("beaconLink").href = `https://beaconcha.in/validator/${pk}`;
+      if (validatorIndex) $("validatorIndexHint").textContent = validatorIndex;
+      else {
+        const found = csvValidators.find((v) => v.publicKey === pk);
+        $("validatorIndexHint").textContent = found?.validatorIndex || "—";
+      }
+    }
+
+    function renderPubkeySelect(filter = "") {
+      const select = $("pubkeySelect");
+      const q = filter.trim().toLowerCase();
+      const list = q
+        ? csvValidators.filter(
+            (v) =>
+              v.publicKey.includes(q) ||
+              String(v.validatorIndex).includes(q) ||
+              truncatePubkey(v.publicKey).toLowerCase().includes(q)
+          )
+        : csvValidators;
+
+      const current = normalizePubkey($("pubkey").value);
+      select.innerHTML =
+        `<option value="">— 选择验证器（${list.length} / ${csvValidators.length}）—</option>` +
+        list
+          .map((v) => {
+            const label = `#${v.validatorIndex || "?"} · ${truncatePubkey(v.publicKey)} · ${v.rowCount} 行 · CL ${formatEth(v.clEth)}`;
+            const selected = v.publicKey === current ? " selected" : "";
+            return `<option value="${v.publicKey}"${selected}>${label}</option>`;
+          })
+          .join("");
+    }
+
+    function enablePubkeyPicker() {
+      const picker = $("pubkeyPicker");
+      picker.classList.remove("disabled");
+      $("pubkeySearch").disabled = false;
+      $("pubkeySelect").disabled = false;
+      $("pubkeyPickHint").textContent = `共 ${csvValidators.length} 个验证器，搜索后点选即可填入 Public Key。`;
+      renderPubkeySelect($("pubkeySearch").value);
+    }
+
+    function disablePubkeyPicker() {
+      csvValidators = [];
+      $("pubkeyPicker").classList.add("disabled");
+      $("pubkeySearch").disabled = true;
+      $("pubkeySearch").value = "";
+      $("pubkeySelect").disabled = true;
+      $("pubkeySelect").innerHTML = '<option value="">— 加载 CSV 后可选择 —</option>';
+      $("pubkeyPickHint").textContent = "加载 CSV 后，可搜索并点选验证器，会自动填入上方 Public Key。";
+    }
+
+    function setCsvInfo(text, ok) {
+      const el = $("csvInfo");
+      el.textContent = text;
+      el.className = ok ? "hint msg ok" : "hint";
+    }
+
+    async function loadCsvText(text, label) {
+      try {
+        const parsed = parseCsv(text);
+        csvRows = parsed.rows;
+        csvValidators = listValidatorsFromCsv(csvRows);
+        setCsvInfo(`已加载 ${label}：${csvRows.length} 行，${csvValidators.length} 个唯一 Public Key`, true);
+        enablePubkeyPicker();
+        syncSelectToPubkeyInput();
+      } catch (err) {
+        csvRows = [];
+        disablePubkeyPicker();
+        setCsvInfo(err.message || String(err), false);
+        throw err;
+      }
+    }
+
+    function syncSelectToPubkeyInput() {
+      const pk = normalizePubkey($("pubkey").value);
+      updateBeaconLink(pk);
+      if (!csvValidators.length) return;
+      const select = $("pubkeySelect");
+      const match = [...select.options].find((o) => o.value === pk);
+      if (match) select.value = pk;
+    }
+
+    $("csvFile").addEventListener("change", async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      await loadCsvText(await file.text(), file.name);
+    });
+
+    $("btnLoadExample").addEventListener("click", async () => {
+      try {
+        const res = await fetch("./02_daily_rewards_2026-06.csv");
+        if (!res.ok) throw new Error("无法加载示例 CSV（请用本地 HTTP 服务打开）");
+        await loadCsvText(await res.text(), "02_daily_rewards_2026-06.csv");
+      } catch (err) {
+        setCsvInfo(err.message || String(err), false);
+      }
+    });
+
+    $("pubkeySearch").addEventListener("input", (e) => {
+      renderPubkeySelect(e.target.value);
+    });
+
+    $("pubkeySelect").addEventListener("change", (e) => {
+      const pk = e.target.value;
+      if (!pk) return;
+      $("pubkey").value = pk;
+      const v = csvValidators.find((x) => x.publicKey === pk);
+      updateBeaconLink(pk, v?.validatorIndex);
+    });
+
+    $("pubkey").addEventListener("input", () => {
+      syncSelectToPubkeyInput();
+    });
+
+    $("pubkey").addEventListener("change", () => {
+      syncSelectToPubkeyInput();
+    });
+
+    document.querySelectorAll(".tab").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        activeBeaconTab = btn.dataset.tab;
+        document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("active", b === btn));
+        $("panelJson").hidden = activeBeaconTab !== "json";
+        $("panelManual").hidden = activeBeaconTab !== "manual";
+      });
+    });
+
+    function refreshManualPreview() {
+      const el = $("manualPreview");
+      const summary = summarizeManualEntries($("manualEpochData").value);
+      if (!summary) {
+        el.textContent = "粘贴后自动预览解析条数与 CL 合计。";
+        el.className = "hint";
+        return;
+      }
+      if (summary.error) {
+        el.textContent = summary.error;
+        el.className = "hint msg err";
+        return;
+      }
+      el.textContent =
+        `已解析 ${summary.count} 条 · Epoch ${summary.epochMin}–${summary.epochMax} · ` +
+        `CL 合计 ${summary.clGwei.toString()} GWei（${formatEth(summary.clEth)} ETH）`;
+      el.className = "hint msg ok";
+    }
+
+    $("manualEpochData").addEventListener("input", refreshManualPreview);
+
+    $("btnCompare").addEventListener("click", () => {
+      const errEl = $("compareErr");
+      errEl.style.display = "none";
+      $("resultSection").hidden = true;
+
+      try {
+        if (!csvRows.length) throw new Error("请先上传或加载 CSV");
+        const pubkey = normalizePubkey($("pubkey").value);
+        if (!pubkey) throw new Error("请填写 Public Key");
+
+        const start = Number($("epochStart").value);
+        const end = Number($("epochEnd").value);
+        const csvAgg = aggregateCsvByPubkey(csvRows, pubkey);
+        if (!csvAgg.rows.length) {
+          throw new Error("CSV 中未找到该 Public Key 的记录");
+        }
+
+        const beaconRaw = resolveBeaconchaRows({
+          jsonText: $("beaconData").value,
+          manualText: $("manualEpochData").value,
+          preferManual: activeBeaconTab === "manual",
+        });
+        const epochRows = filterEpochRange(beaconRaw, start, end);
+        const result = compareRewards(csvAgg, epochRows);
+
+        renderResult(result, csvAgg, start, end, activeBeaconTab === "manual");
+        $("resultSection").hidden = false;
+      } catch (err) {
+        errEl.textContent = err.message || String(err);
+        errEl.style.display = "block";
+      }
+    });
+
+    function badge(match, missing) {
+      if (missing) return '<span class="badge warn">缺数据</span>';
+      return match
+        ? '<span class="badge ok">一致</span>'
+        : '<span class="badge err">不一致</span>';
+    }
+
+    function renderResult(result, csvAgg, start, end, fromManual = false) {
+      const { csv, beaconcha, diff, perEpoch } = result;
+      const sourceLabel = fromManual ? "手动粘贴" : "beaconcha";
+
+      $("summary").innerHTML = `
+        <div class="card">
+          <div class="title">CSV CL 总和 ${badge(diff.clMatch)}</div>
+          <div class="value">${formatEth(csv.clEth)} ETH</div>
+          <div class="hint">${csv.rowCount} 行求和</div>
+        </div>
+        <div class="card">
+          <div class="title">${sourceLabel} CL（Epoch ${start}–${end}）${badge(diff.clMatch, beaconcha.missingEpochs.length)}</div>
+          <div class="value">${formatEth(beaconcha.clEth)} ETH</div>
+          <div class="hint">差值 ${formatDiff(diff.clEth)} ETH</div>
+        </div>
+      `;
+
+      $("csvRows").innerHTML =
+        "<strong>CSV 匹配行：</strong><br>" +
+        csvAgg.rows
+          .map(
+            (r) =>
+              `#${r.line} · ${r.date || "—"} · CL ${formatEth(r.clEth)} · index ${r.validatorIndex || "—"}`
+          )
+          .join("<br>");
+
+      $("epochTable").innerHTML = perEpoch
+        .map((r) => {
+          return `<tr class="${r.missing ? "missing" : ""}">
+            <td>${r.epoch}${r.missing ? " ⚠" : ""}</td>
+            <td>${formatEth(r.clEth)}</td>
+          </tr>`;
+        })
+        .join("");
+
+      const footCl = perEpoch.reduce((s, r) => s + r.clEth, 0);
+      $("epochFoot").innerHTML = `<tr>
+        <th>合计 (${perEpoch.length} epochs)</th>
+        <th>${formatEth(footCl)}</th>
+      </tr>`;
+
+      if (beaconcha.missingEpochs.length) {
+        $("csvRows").innerHTML +=
+          `<br><span class="badge warn">${sourceLabel} 缺少 epoch：${beaconcha.missingEpochs.join(", ")}</span>`;
+      }
+    }
+  </script>
+</body>
+</html>
