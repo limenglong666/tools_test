@@ -197,15 +197,61 @@
     .ctx-row:last-child { border-bottom: none; }
     details { margin-top: 0.75rem; }
     summary { cursor: pointer; color: var(--accent); font-size: 0.85rem; }
+    .step-section {
+      padding: 0;
+      overflow: hidden;
+    }
+    .step-section > details {
+      margin: 0;
+    }
+    .step-section > details > summary {
+      list-style: none;
+      display: flex;
+      align-items: center;
+      gap: 0.55rem;
+      padding: 1.15rem 1.35rem;
+      margin: 0;
+      color: var(--text);
+      font-size: inherit;
+      user-select: none;
+    }
+    .step-section > details > summary::-webkit-details-marker { display: none; }
+    .step-section > details > summary::before {
+      content: "▸";
+      flex-shrink: 0;
+      color: var(--accent);
+      font-size: 0.9rem;
+      line-height: 1;
+      transition: transform 0.15s ease;
+    }
+    .step-section > details[open] > summary::before {
+      transform: rotate(90deg);
+    }
+    .step-section > details > summary:hover {
+      background: rgba(61, 139, 253, 0.06);
+    }
+    .step-title {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .step-body {
+      padding: 0 1.35rem 1.25rem;
+      border-top: 1px solid var(--border);
+    }
+    .step-section > details:not([open]) > summary {
+      border-bottom: none;
+    }
   </style>
 </head>
 <body>
   <div class="wrap">
     <a class="back" href="../">← 返回工具首页</a>
     <h1>Validator Rewards Compare</h1>
-    <p class="sub">
-      对比本地 CSV 中某台验证器的 <strong>CL Rewards</strong>，
-      与 beaconcha.in Validator History（按 Epoch 汇总）是否一致。
+      <p class="sub">
+      对比 CSV 与 beaconcha.in 的 <strong>CL Rewards</strong>，以及与 Etherscan Transfer 交易的 <strong>EL Rewards</strong>。
     </p>
 
     <section>
@@ -237,25 +283,25 @@
         </select>
         <p id="pubkeyPickHint" class="hint">加载 CSV 后，可搜索并点选验证器，会自动填入上方 Public Key。</p>
       </div>
-      <p class="hint" id="validatorLinkHint">
-        示例验证器 index：<code id="validatorIndexHint">1283884</code> ·
-        <a id="beaconLink" href="https://beaconcha.in/validator/0x8001ff793be4d78da2175d4c67b0e51f4862a48c5b5834a9bc1a80e3912a8c52d778b02287605300257f1c6a7ad1f9a2" target="_blank" rel="noopener" style="color:var(--accent)">beaconcha.in 页面</a>
-      </p>
+      <div class="row" style="margin-top:1rem;margin-bottom:0">
+        <div class="field">
+          <label>当前验证器</label>
+          <div id="ctxValidator" class="ctx-value muted">—</div>
+        </div>
+        <div class="field">
+          <label>CSV 各行（点选一行用于对比）</label>
+          <div id="ctxCsvRows" class="ctx-rows ctx-value muted">请先加载 CSV 并选择验证器</div>
+        </div>
+      </div>
     </section>
 
-    <section>
-      <h2>3 · beaconcha.in Validator History</h2>
+    <section class="step-section">
+      <details open id="stepClDetails">
+        <summary class="step-summary"><span class="step-title">3 · beaconcha.in Validator History（CL）</span></summary>
+        <div class="step-body">
 
       <div class="compare-context">
         <div class="row" style="margin-bottom:0.5rem">
-          <div class="field">
-            <label>当前验证器</label>
-            <div id="ctxValidator" class="ctx-value muted">—</div>
-          </div>
-          <div class="field">
-            <label>CSV 各行（点选一行用于对比）</label>
-            <div id="ctxCsvRows" class="ctx-rows ctx-value muted">请先加载 CSV 并选择验证器</div>
-          </div>
           <div class="field sm">
             <label for="epochStart">起始 Epoch</label>
             <input type="number" id="epochStart" value="457380" />
@@ -268,8 +314,13 @@
         <p id="ctxEpochHint" class="hint" style="margin:0">
           对比区间：<strong id="ctxEpochRange">457380 – 457394</strong>
           · 共 <strong id="ctxEpochCount">15</strong> 个 Epoch
+          · 时间 <strong id="ctxEpochTime">—</strong>
         </p>
       </div>
+      <p class="hint" id="validatorLinkHint" style="margin-top:0.75rem">
+        示例验证器 index：<code id="validatorIndexHint">1283884</code> ·
+        <a id="beaconLink" href="https://beaconcha.in/validator/0x8001ff793be4d78da2175d4c67b0e51f4862a48c5b5834a9bc1a80e3912a8c52d778b02287605300257f1c6a7ad1f9a2" target="_blank" rel="noopener" style="color:var(--accent)">beaconcha.in 页面</a>
+      </p>
 
       <div class="tabs" role="tablist">
         <button type="button" class="tab active" data-tab="json">API JSON / HTML</button>
@@ -310,13 +361,55 @@
       </div>
 
       <div class="row" style="margin-top:0.75rem">
-        <button type="button" id="btnCompare" class="primary">开始对比</button>
+        <button type="button" id="btnCompare" class="primary">开始对比 CL</button>
       </div>
       <p id="compareErr" class="msg err" style="display:none"></p>
+
+        </div>
+      </details>
+    </section>
+
+    <section class="step-section">
+      <details open id="stepElDetails">
+        <summary class="step-summary"><span class="step-title">4 · Etherscan EL（Transfer）</span></summary>
+        <div class="step-body">
+      <p class="hint" style="margin-top:0">
+        在
+        <a href="https://etherscan.io/address/0xee5f5c53ce2159fc6dd4b0571e86a4a390d04846" target="_blank" rel="noopener" style="color:var(--accent)">Etherscan 地址页</a>
+        的 Transactions 中，筛选 <strong>Method = Transfer</strong> 且时间在上方 Epoch 对应区间内（由主网 genesis 公式换算）的转入，求和后<strong>除以 CSV 该 Epoch 区间内唯一 Public Key 数量</strong>，再与所选行 CSV EL 对比。
+      </p>
+      <div class="row">
+        <div class="field">
+          <label for="elAddress">监控地址</label>
+          <input type="text" id="elAddress" spellcheck="false"
+            value="0xee5f5c53ce2159fc6dd4b0571e86a4a390d04846" />
+        </div>
+        <div class="field">
+          <label for="etherscanApiKey">Etherscan API Key</label>
+          <input type="text" id="etherscanApiKey" spellcheck="false" placeholder="在 etherscan.io/apidashboard 创建" />
+        </div>
+      </div>
+      <p id="elTimeHint" class="hint">Epoch 时间范围将随上方起始/结束 Epoch 自动更新。</p>
+      <label for="etherscanManual" style="margin-top:0.75rem">或粘贴 Etherscan txlist JSON（可选，无 API 时用）</label>
+      <textarea id="etherscanManual" spellcheck="false" placeholder='[{"hash":"0x...","timeStamp":"...","value":"...","to":"0x...","functionName":"Transfer",...}]' style="min-height:100px"></textarea>
+      <details>
+        <summary>Epoch → 时间说明</summary>
+        <p class="hint">
+          主网：<code>timestamp = 1606824023 + epoch × 32 × 12</code>（秒，UTC）。区间结束时间为下一 Epoch 起始前 1 秒。
+          也可在 <a href="https://beaconcha.in/epoch/457560" target="_blank" rel="noopener" style="color:var(--accent)">beaconcha.in/epoch/{n}</a> 查看各 Epoch 时间作对照。
+        </p>
+      </details>
+      <div class="row" style="margin-top:0.75rem">
+        <button type="button" id="btnCompareEl" class="primary">开始对比 EL</button>
+      </div>
+      <p id="elCompareErr" class="msg err" style="display:none"></p>
+
+        </div>
+      </details>
     </section>
 
     <section id="resultSection" hidden>
-      <h2>对比结果</h2>
+      <h2>对比结果 · CL</h2>
       <div id="summary" class="summary"></div>
       <div id="csvRows" class="csv-rows"></div>
       <div class="table-wrap">
@@ -325,7 +418,6 @@
             <tr>
               <th>Epoch</th>
               <th>beaconcha CL (ETH)</th>
-              <th>beaconcha EL (ETH)</th>
             </tr>
           </thead>
           <tbody id="epochTable"></tbody>
@@ -337,8 +429,34 @@
         <p class="hint">
           beaconcha CL = 各 attestation / proposer / sync / slashing 奖励项之和 − 惩罚项（单位 gwei，来自
           <code>incomedetailhistory</code>）。
-          CSV 侧使用<strong>所选单行</strong>的 CL / EL 与 beaconcha 区间总和对比。
-          手动粘贴 beaconcha 时仅含 CL（GWei）；EL 对比需 API JSON 中含 <code>tx_fee_reward_wei</code>。
+          仅对比 <strong>CL</strong>；使用所选单行的 CL 与 beaconcha 区间 CL 总和对比。
+        </p>
+      </details>
+
+      <h2 style="margin-top:1.75rem">对比结果 · EL</h2>
+      <div id="elSummary" class="summary"></div>
+      <p id="elMeta" class="hint"></p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Time (UTC)</th>
+              <th>Tx Hash</th>
+              <th>From</th>
+              <th>Value (ETH)</th>
+            </tr>
+          </thead>
+          <tbody id="elTxTable"></tbody>
+          <tfoot id="elTxFoot"></tfoot>
+        </table>
+      </div>
+      <details>
+        <summary>EL 计算说明</summary>
+        <p class="hint">
+          Etherscan 侧：在监控地址的 Transactions 中，取 Method 为 <strong>Transfer</strong>（含原生 ETH 转入）且
+          <code>timeStamp</code> 落在 Epoch 区间对应 UTC 时间内的交易，对 <code>value</code> 求和，再除以 CSV 中
+          Epoch Range 与该区间有交集的唯一 <strong>Public Key</strong> 数量，得到人均 EL。
+          CSV 侧：所选行的 <strong>EL Rewards Generated</strong>（单验证器）。
         </p>
       </details>
     </section>
@@ -358,7 +476,17 @@
       normalizePubkey,
       truncatePubkey,
       summarizeManualEntries,
+      weiBigIntToEth,
+      countUniquePubkeysInCsvEpochRange,
     } from "./compare.js";
+    import {
+      DEFAULT_EL_FEE_ADDRESS,
+      epochRangeToUnix,
+      formatUnixUtc,
+      fetchElTransfersFromEtherscan,
+      computeElFromManualTxs,
+      compareEl,
+    } from "./etherscan.js";
 
     let csvRows = [];
     let csvValidators = [];
@@ -375,6 +503,41 @@
       return csvAggFromRow(row);
     }
 
+    function updateEpochTimeHints() {
+      const start = Number($("epochStart").value);
+      const end = Number($("epochEnd").value);
+      try {
+        const range = epochRangeToUnix(start, end);
+        const text = `${formatUnixUtc(range.startTs)} – ${formatUnixUtc(range.endTs)}`;
+        $("ctxEpochTime").textContent = text;
+        $("elTimeHint").textContent =
+          `EL 筛选时间（UTC）：${text} · Epoch ${range.startEpoch}–${range.endEpoch}`;
+      } catch {
+        $("ctxEpochTime").textContent = "—";
+        $("elTimeHint").textContent = "Epoch 范围无效，无法换算时间";
+      }
+    }
+
+    function updateEpochSummary() {
+      const start = Number($("epochStart").value);
+      const end = Number($("epochEnd").value);
+      if (Number.isFinite(start) && Number.isFinite(end) && start <= end) {
+        $("ctxEpochRange").textContent = `${start} – ${end}`;
+        $("ctxEpochCount").textContent = String(end - start + 1);
+      } else {
+        $("ctxEpochRange").textContent = "—";
+        $("ctxEpochCount").textContent = "—";
+      }
+      updateEpochTimeHints();
+    }
+
+    function applyEpochFromSelectedRow(agg) {
+      const row = agg.rows.find((r) => r.line === selectedCsvLine) || agg.rows[0];
+      if (!row || row.epochStart == null || row.epochEnd == null) return;
+      $("epochStart").value = row.epochStart;
+      $("epochEnd").value = row.epochEnd;
+    }
+
     function renderCsvRowPicker(agg) {
       const csvRowsEl = $("ctxCsvRows");
       if (!selectedCsvLine || !agg.rows.some((r) => r.line === selectedCsvLine)) {
@@ -389,6 +552,7 @@
             <input type="radio" name="csvRowPick" value="${r.line}"${checked ? " checked" : ""} />
             <span class="ctx-row-body">
               <span class="ctx-row-title">第 ${i + 1} 行 · ${r.date || "—"}</span>
+              ${r.epochRange ? `<span class="ctx-row-metric"><strong>Epoch Range</strong> ${r.epochRange}</span>` : ""}
               <span class="ctx-row-metric"><strong>CL</strong> ${formatEth(r.clEth)} ETH</span>
               <span class="ctx-row-metric"><strong>EL</strong> ${formatEth(r.elEth)} ETH</span>
             </span>
@@ -400,24 +564,17 @@
         inp.addEventListener("change", (e) => {
           selectedCsvLine = Number(e.target.value);
           renderCsvRowPicker(agg);
+          updateEpochSummary();
         });
       });
+
+      applyEpochFromSelectedRow(agg);
     }
 
     function refreshCompareContext() {
       const pk = normalizePubkey($("pubkey").value);
-      const start = Number($("epochStart").value);
-      const end = Number($("epochEnd").value);
       const validatorEl = $("ctxValidator");
       const csvRowsEl = $("ctxCsvRows");
-
-      if (Number.isFinite(start) && Number.isFinite(end) && start <= end) {
-        $("ctxEpochRange").textContent = `${start} – ${end}`;
-        $("ctxEpochCount").textContent = String(end - start + 1);
-      } else {
-        $("ctxEpochRange").textContent = "—";
-        $("ctxEpochCount").textContent = "—";
-      }
 
       if (!pk) {
         validatorEl.textContent = "—";
@@ -445,6 +602,7 @@
       }
 
       renderCsvRowPicker(agg);
+      updateEpochSummary();
     }
 
     function updateBeaconLink(pubkey, validatorIndex) {
@@ -574,8 +732,8 @@
       syncSelectToPubkeyInput();
     });
 
-    $("epochStart").addEventListener("input", refreshCompareContext);
-    $("epochEnd").addEventListener("input", refreshCompareContext);
+    $("epochStart").addEventListener("input", updateEpochSummary);
+    $("epochEnd").addEventListener("input", updateEpochSummary);
 
     document.querySelectorAll(".tab").forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -607,10 +765,13 @@
 
     $("manualEpochData").addEventListener("input", refreshManualPreview);
 
-    $("btnCompare").addEventListener("click", () => {
+    $("btnCompare").addEventListener("click", async () => {
       const errEl = $("compareErr");
       errEl.style.display = "none";
       $("resultSection").hidden = true;
+      $("btnCompare").disabled = true;
+      $("btnCompare").textContent = "对比中…";
+      $("stepClDetails").open = true;
 
       try {
         if (!csvRows.length) throw new Error("请先上传或加载 CSV");
@@ -637,6 +798,43 @@
       } catch (err) {
         errEl.textContent = err.message || String(err);
         errEl.style.display = "block";
+      } finally {
+        $("btnCompare").disabled = false;
+        $("btnCompare").textContent = "开始对比 CL";
+      }
+    });
+
+    $("btnCompareEl").addEventListener("click", async () => {
+      const errEl = $("elCompareErr");
+      errEl.style.display = "none";
+      $("btnCompareEl").disabled = true;
+      $("btnCompareEl").textContent = "对比中…";
+      $("stepElDetails").open = true;
+
+      try {
+        if (!csvRows.length) throw new Error("请先上传或加载 CSV");
+        const pubkey = normalizePubkey($("pubkey").value);
+        if (!pubkey) throw new Error("请填写 Public Key");
+        const apiKey = $("etherscanApiKey").value.trim();
+        const manual = $("etherscanManual").value.trim();
+        if (!apiKey && !manual) throw new Error("请填写 Etherscan API Key 或粘贴 txlist JSON");
+
+        const start = Number($("epochStart").value);
+        const end = Number($("epochEnd").value);
+        const csvAgg = getSelectedCsvAgg(pubkey);
+        if (!csvAgg.rows.length) {
+          throw new Error("CSV 中未找到该 Public Key 的记录");
+        }
+
+        await renderElCompare(csvAgg, start, end);
+        $("resultSection").hidden = false;
+        document.getElementById("elSummary")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      } catch (err) {
+        errEl.textContent = err.message || String(err);
+        errEl.style.display = "block";
+      } finally {
+        $("btnCompareEl").disabled = false;
+        $("btnCompareEl").textContent = "开始对比 EL";
       }
     });
 
@@ -668,15 +866,6 @@
           <div class="value">${formatEth(beaconcha.clEth)} ETH</div>
           <div class="hint">差值 ${formatDiff(diff.clEth)} ETH</div>
         </div>
-        <div class="card">
-          <div class="title">CSV EL（所选行）${badge(diff.elMatch)}</div>
-          <div class="value">${formatEth(csv.elEth)} ETH</div>
-        </div>
-        <div class="card">
-          <div class="title">${sourceLabel} EL（Epoch ${start}–${end}）${badge(diff.elMatch, beaconcha.missingEpochs.length)}</div>
-          <div class="value">${formatEth(beaconcha.elEth)} ETH</div>
-          <div class="hint">差值 ${formatDiff(diff.elEth)} ETH</div>
-        </div>
       `;
 
       $("csvRows").innerHTML =
@@ -688,23 +877,127 @@
           return `<tr class="${r.missing ? "missing" : ""}">
             <td>${r.epoch}${r.missing ? " ⚠" : ""}</td>
             <td>${formatEth(r.clEth)}</td>
-            <td>${formatEth(r.elEth)}</td>
           </tr>`;
         })
         .join("");
 
       const footCl = perEpoch.reduce((s, r) => s + r.clEth, 0);
-      const footEl = perEpoch.reduce((s, r) => s + r.elEth, 0);
       $("epochFoot").innerHTML = `<tr>
         <th>合计 (${perEpoch.length} epochs)</th>
         <th>${formatEth(footCl)}</th>
-        <th>${formatEth(footEl)}</th>
       </tr>`;
 
       if (beaconcha.missingEpochs.length) {
         $("csvRows").innerHTML +=
           `<br><span class="badge warn">${sourceLabel} 缺少 epoch：${beaconcha.missingEpochs.join(", ")}</span>`;
       }
+    }
+
+    function truncHash(h) {
+      if (!h || h.length < 14) return h || "—";
+      return h.slice(0, 10) + "…" + h.slice(-6);
+    }
+
+    async function renderElCompare(csvAgg, startEpoch, endEpoch) {
+      const address = ($("elAddress").value || DEFAULT_EL_FEE_ADDRESS).trim();
+      const apiKey = $("etherscanApiKey").value.trim();
+      const manual = $("etherscanManual").value.trim();
+      const csvEl = csvAgg.rows[0]?.elEth ?? 0;
+
+      let elData;
+      let sourceLabel;
+      try {
+        if (apiKey) {
+          elData = await fetchElTransfersFromEtherscan(address, startEpoch, endEpoch, apiKey);
+          sourceLabel = "Etherscan API";
+        } else if (manual) {
+          elData = computeElFromManualTxs(manual, address, startEpoch, endEpoch);
+          sourceLabel = "粘贴 JSON";
+        } else {
+          $("elSummary").innerHTML = `
+            <div class="card">
+              <div class="title">EL 对比</div>
+              <div class="value" style="color:var(--muted)">请填写 Etherscan API Key 或粘贴 txlist JSON</div>
+            </div>`;
+          $("elMeta").textContent = "";
+          $("elTxTable").innerHTML = "";
+          $("elTxFoot").innerHTML = "";
+          return;
+        }
+      } catch (err) {
+        $("elSummary").innerHTML = `
+          <div class="card">
+            <div class="title">EL 对比</div>
+            <div class="value" style="color:var(--error)">${err.message || String(err)}</div>
+          </div>`;
+        $("elMeta").textContent = "";
+        $("elTxTable").innerHTML = "";
+        $("elTxFoot").innerHTML = "";
+        return;
+      }
+
+      let validatorCount;
+      try {
+        validatorCount = countUniquePubkeysInCsvEpochRange(csvRows, startEpoch, endEpoch);
+      } catch (err) {
+        $("elSummary").innerHTML = `
+          <div class="card">
+            <div class="title">EL 对比</div>
+            <div class="value" style="color:var(--error)">${err.message || String(err)}</div>
+          </div>`;
+        $("elMeta").textContent = "";
+        $("elTxTable").innerHTML = "";
+        $("elTxFoot").innerHTML = "";
+        return;
+      }
+      if (validatorCount === 0) {
+        $("elSummary").innerHTML = `
+          <div class="card">
+            <div class="title">EL 对比</div>
+            <div class="value" style="color:var(--error)">CSV 中无与 Epoch ${startEpoch}–${endEpoch} 有交集的行（需 Epoch Range 列）</div>
+          </div>`;
+        $("elMeta").textContent = "";
+        $("elTxTable").innerHTML = "";
+        $("elTxFoot").innerHTML = "";
+        return;
+      }
+
+      const diff = compareEl(csvEl, elData.totalEth, validatorCount);
+      $("elSummary").innerHTML = `
+        <div class="card">
+          <div class="title">CSV EL（所选行）${badge(diff.elMatch)}</div>
+          <div class="value">${formatEth(diff.csvElEth)} ETH</div>
+        </div>
+        <div class="card">
+          <div class="title">${sourceLabel} 人均 EL${badge(diff.elMatch)}</div>
+          <div class="value">${formatEth(diff.etherscanPerValidatorEth)} ETH</div>
+          <div class="hint">Transfer 合计 ${formatEth(diff.etherscanTotalEth)} ETH ÷ ${diff.validatorCount} 个 Public Key · ${elData.transactions.length} 笔 · 差值 ${formatDiff(diff.diffEth)} ETH</div>
+        </div>
+      `;
+
+      const blockHint = elData.blockRange
+        ? ` · 区块 ${elData.blockRange.startBlock}–${elData.blockRange.endBlock}`
+        : "";
+      $("elMeta").textContent =
+        `CSV Epoch ${startEpoch}–${endEpoch} 内 ${validatorCount} 个唯一 Public Key · 地址 ${address} · 时间 ${formatUnixUtc(elData.startTs)} – ${formatUnixUtc(elData.endTs)}${blockHint}`;
+
+      $("elTxTable").innerHTML = elData.transactions
+        .map((tx) => {
+          const eth = weiBigIntToEth(BigInt(tx.value || 0));
+          return `<tr>
+            <td>${formatUnixUtc(Number(tx.timeStamp))}</td>
+            <td title="${tx.hash}">${truncHash(tx.hash)}</td>
+            <td title="${tx.from}">${truncHash(tx.from)}</td>
+            <td>${formatEth(eth)}</td>
+          </tr>`;
+        })
+        .join("");
+
+      $("elTxFoot").innerHTML = `<tr>
+        <th>合计 (${elData.transactions.length} 笔 Transfer)</th>
+        <th colspan="2">÷ ${validatorCount} Public Key</th>
+        <th>${formatEth(diff.etherscanPerValidatorEth)}</th>
+      </tr>`;
     }
 
     refreshCompareContext();

@@ -1,6 +1,7 @@
 {
   "name": "tools",
   "private": true,
+  "type": "module",
   "scripts": {
     "start": "npx --yes serve -p 3456",
     "serve": "npx --yes serve -p 3456"

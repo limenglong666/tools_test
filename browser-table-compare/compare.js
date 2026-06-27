@@ -38,6 +38,7 @@ export function parseCsv(text) {
     el: findCol(header, ["EL Rewards Generated", "EL Rewards", "EL Reward"]),
     validatorIndex: findCol(header, ["Validator Index ID", "Validator Index", "validator_index"]),
     date: findCol(header, ["Date", "date"]),
+    epochRange: findCol(header, ["Epoch Range", "epoch range", "Epoch range"]),
   };
   if (idx.publicKey < 0) throw new Error("未找到 Public Key 列");
   if (idx.cl < 0) throw new Error("未找到 CL Rewards Generated 列");
@@ -48,6 +49,8 @@ export function parseCsv(text) {
     if (!cols.length) continue;
     const publicKey = normalizePubkey(cols[idx.publicKey]);
     if (!publicKey) continue;
+    const epochRangeRaw = idx.epochRange >= 0 ? cols[idx.epochRange]?.trim() : "";
+    const epochParsed = parseEpochRange(epochRangeRaw);
     rows.push({
       line: i + 1,
       date: idx.date >= 0 ? cols[idx.date]?.trim() : "",
@@ -55,6 +58,9 @@ export function parseCsv(text) {
       validatorIndex: idx.validatorIndex >= 0 ? cols[idx.validatorIndex]?.trim() : "",
       clEth: parseFloat(cols[idx.cl]) || 0,
       elEth: idx.el >= 0 ? parseFloat(cols[idx.el]) || 0 : 0,
+      epochRange: epochRangeRaw,
+      epochStart: epochParsed?.start ?? null,
+      epochEnd: epochParsed?.end ?? null,
     });
   }
   return { header, rows };
@@ -89,6 +95,29 @@ function splitCsvLine(line) {
   return out;
 }
 
+/** 解析 CSV Epoch Range，如 457380-457394、457380 – 457394、457380 */
+export function parseEpochRange(text) {
+  if (text == null || !String(text).trim()) return null;
+  const s = String(text).trim();
+
+  const rangeMatch = s.match(/(\d+)\s*(?:[-–—~]|to)\s*(\d+)/i);
+  if (rangeMatch) {
+    const a = parseInt(rangeMatch[1], 10);
+    const b = parseInt(rangeMatch[2], 10);
+    if (Number.isFinite(a) && Number.isFinite(b)) {
+      return { start: Math.min(a, b), end: Math.max(a, b), raw: s };
+    }
+  }
+
+  const single = s.match(/^(\d+)$/);
+  if (single) {
+    const n = parseInt(single[1], 10);
+    return { start: n, end: n, raw: s };
+  }
+
+  return null;
+}
+
 export function aggregateCsvByPubkey(rows, pubkey) {
   const pk = normalizePubkey(pubkey);
   const matched = rows.filter((r) => r.publicKey === pk);
@@ -113,6 +142,23 @@ export function csvAggFromRow(row) {
     clEth: row.clEth,
     elEth: row.elEth,
   };
+}
+
+/** CSV 中与 [startEpoch, endEpoch] 有交集的行里，唯一 Public Key 数量 */
+export function countUniquePubkeysInCsvEpochRange(rows, startEpoch, endEpoch) {
+  const start = Number(startEpoch);
+  const end = Number(endEpoch);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start > end) {
+    throw new Error("Epoch 范围无效");
+  }
+  const pubkeys = new Set();
+  for (const row of rows) {
+    if (row.epochStart == null || row.epochEnd == null) continue;
+    if (row.epochStart <= end && row.epochEnd >= start) {
+      pubkeys.add(row.publicKey);
+    }
+  }
+  return pubkeys.size;
 }
 
 export function listValidatorsFromCsv(rows) {
@@ -379,40 +425,30 @@ export function filterEpochRange(rows, startEpoch, endEpoch) {
 
 export function compareRewards(csvAgg, epochRows) {
   const beaconClGwei = epochRows.reduce((s, r) => s + (r.clGwei ?? 0n), 0n);
-  const beaconElWei = epochRows.reduce((s, r) => s + (r.elWei ?? 0n), 0n);
   const csvClGwei = ethToGweiBigInt(csvAgg.clEth);
-  const csvElWei = ethToWeiBigInt(csvAgg.elEth ?? 0);
   const clDiffGwei = csvClGwei - beaconClGwei;
-  const elDiffWei = csvElWei - beaconElWei;
 
   return {
     csv: {
       clEth: csvAgg.clEth,
       elEth: csvAgg.elEth ?? 0,
       clGwei: csvClGwei,
-      elWei: csvElWei,
       rowCount: csvAgg.rows.length,
     },
     beaconcha: {
       clEth: gweiBigIntToEth(beaconClGwei),
-      elEth: weiBigIntToEth(beaconElWei),
       clGwei: beaconClGwei,
-      elWei: beaconElWei,
       epochCount: epochRows.filter((r) => !r.missing).length,
       missingEpochs: epochRows.filter((r) => r.missing).map((r) => r.epoch),
     },
     diff: {
       clEth: gweiBigIntToEth(clDiffGwei),
-      elEth: weiBigIntToEth(elDiffWei),
       clGwei: clDiffGwei,
-      elWei: elDiffWei,
       clMatch: clDiffGwei === 0n,
-      elMatch: elDiffWei === 0n,
     },
     perEpoch: epochRows.map((r) => ({
       epoch: r.epoch,
       clEth: r.clEth ?? gweiBigIntToEth(r.clGwei ?? 0n),
-      elEth: r.elEth ?? weiBigIntToEth(r.elWei ?? 0n),
       missing: !!r.missing,
     })),
   };
