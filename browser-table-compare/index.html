@@ -194,6 +194,18 @@
     .ctx-row-title { color: var(--text); }
     .ctx-row-metric { color: var(--muted); font-size: 0.74rem; }
     .ctx-row-metric strong { color: var(--accent); font-weight: 600; }
+    .ctx-validator-totals {
+      margin-top: 0.45rem;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.76rem;
+      color: var(--muted);
+      line-height: 1.55;
+      display: flex;
+      flex-direction: column;
+      gap: 0.2rem;
+    }
+    .ctx-validator-totals strong { color: var(--accent); font-weight: 600; }
+    .ctx-validator-totals .totals-dim { opacity: 0.85; }
     .ctx-row:last-child { border-bottom: none; }
     details { margin-top: 0.75rem; }
     summary { cursor: pointer; color: var(--accent); font-size: 0.85rem; }
@@ -258,12 +270,18 @@
       <h2>1 · 本地 CSV</h2>
       <div class="row">
         <div class="field">
-          <label for="csvFile">上传 CSV 文件</label>
+          <label for="csvFile">daily_rewards CSV</label>
           <input type="file" id="csvFile" accept=".csv,text/csv" />
         </div>
-        <button type="button" id="btnLoadExample">加载示例文件</button>
       </div>
-      <p id="csvInfo" class="hint">尚未加载 CSV</p>
+      <p id="csvInfo" class="hint">尚未加载 daily_rewards</p>
+      <div class="row" style="margin-top:0.75rem">
+        <div class="field">
+          <label for="stakeSnapshotFile">stake_snapshot CSV</label>
+          <input type="file" id="stakeSnapshotFile" accept=".csv,text/csv" />
+        </div>
+      </div>
+      <p id="stakeSnapshotInfo" class="hint">尚未加载 stake_snapshot</p>
     </section>
 
     <section>
@@ -287,6 +305,7 @@
         <div class="field">
           <label>当前验证器</label>
           <div id="ctxValidator" class="ctx-value muted">—</div>
+          <p id="ctxValidatorTotals" class="ctx-validator-totals muted"></p>
         </div>
         <div class="field">
           <label>CSV 各行（点选一行用于对比）</label>
@@ -478,6 +497,8 @@
       summarizeManualEntries,
       weiBigIntToEth,
       countUniquePubkeysInCsvEpochRange,
+      parseStakeSnapshotCsv,
+      aggregateStakeSnapshotByPubkey,
     } from "./compare.js";
     import {
       DEFAULT_EL_FEE_ADDRESS,
@@ -489,6 +510,7 @@
     } from "./etherscan.js";
 
     let csvRows = [];
+    let stakeSnapshotRows = [];
     let csvValidators = [];
     let activeBeaconTab = "json";
     let selectedCsvLine = null;
@@ -571,6 +593,39 @@
       applyEpochFromSelectedRow(agg);
     }
 
+    function renderValidatorTotals(agg) {
+      const el = $("ctxValidatorTotals");
+      if (!agg?.rows?.length) {
+        el.textContent = "";
+        el.className = "ctx-validator-totals muted";
+        return;
+      }
+      const clTotal = agg.clEth;
+      const elTotal = agg.elEth;
+      const grandTotal = clTotal + elTotal;
+      const stakeAgg = stakeSnapshotRows.length
+        ? aggregateStakeSnapshotByPubkey(stakeSnapshotRows, agg.publicKey)
+        : null;
+      const totalReward = stakeAgg?.totalReward ?? 0;
+
+      el.className = "ctx-validator-totals";
+      let html =
+        `<span><strong>CL 总和</strong> ${formatEth(clTotal)} ETH</span>` +
+        `<span><strong>EL 总和</strong> ${formatEth(elTotal)} ETH</span>` +
+        `<span><strong>总数</strong> ${formatEth(grandTotal)} ETH <span class="totals-dim">（${agg.rows.length} 行）</span></span>`;
+
+      if (stakeSnapshotRows.length) {
+        const stakeHint = stakeAgg.rows.length
+          ? `（${stakeAgg.rows.length} 行）`
+          : "（未匹配）";
+        html +=
+          `<span><strong>total_reward 总和</strong> ${formatEth(totalReward)} ETH <span class="totals-dim">${stakeHint}</span></span>` +
+          `<span><strong>总收益</strong> ${formatEth(grandTotal + totalReward)} ETH</span>`;
+      }
+
+      el.innerHTML = html;
+    }
+
     function refreshCompareContext() {
       const pk = normalizePubkey($("pubkey").value);
       const validatorEl = $("ctxValidator");
@@ -579,6 +634,7 @@
       if (!pk) {
         validatorEl.textContent = "—";
         validatorEl.className = "ctx-value muted";
+        renderValidatorTotals(null);
         csvRowsEl.innerHTML = "请先加载 CSV 并选择验证器";
         csvRowsEl.className = "ctx-rows ctx-value muted";
         return;
@@ -588,6 +644,7 @@
       validatorEl.className = "ctx-value";
 
       if (!csvRows.length) {
+        renderValidatorTotals(null);
         csvRowsEl.innerHTML = "请先加载 CSV";
         csvRowsEl.className = "ctx-rows ctx-value muted";
         return;
@@ -596,11 +653,13 @@
       const agg = aggregateCsvByPubkey(csvRows, pk);
       if (!agg.rows.length) {
         selectedCsvLine = null;
+        renderValidatorTotals(null);
         csvRowsEl.innerHTML = "CSV 中无此验证器";
         csvRowsEl.className = "ctx-rows ctx-value muted";
         return;
       }
 
+      renderValidatorTotals(agg);
       renderCsvRowPicker(agg);
       updateEpochSummary();
     }
@@ -666,6 +725,12 @@
       el.className = ok ? "hint msg ok" : "hint";
     }
 
+    function setStakeSnapshotInfo(text, ok) {
+      const el = $("stakeSnapshotInfo");
+      el.textContent = text;
+      el.className = ok ? "hint msg ok" : "hint";
+    }
+
     async function loadCsvText(text, label) {
       try {
         const parsed = parseCsv(text);
@@ -679,6 +744,24 @@
         csvRows = [];
         disablePubkeyPicker();
         setCsvInfo(err.message || String(err), false);
+        refreshCompareContext();
+        throw err;
+      }
+    }
+
+    async function loadStakeSnapshotText(text, label) {
+      try {
+        const parsed = parseStakeSnapshotCsv(text);
+        stakeSnapshotRows = parsed.rows;
+        const unique = new Set(parsed.rows.map((r) => r.publicKey)).size;
+        setStakeSnapshotInfo(
+          `已加载 ${label}：${stakeSnapshotRows.length} 行，${unique} 个唯一 validator_pubkey`,
+          true
+        );
+        refreshCompareContext();
+      } catch (err) {
+        stakeSnapshotRows = [];
+        setStakeSnapshotInfo(err.message || String(err), false);
         refreshCompareContext();
         throw err;
       }
@@ -699,13 +782,13 @@
       await loadCsvText(await file.text(), file.name);
     });
 
-    $("btnLoadExample").addEventListener("click", async () => {
+    $("stakeSnapshotFile").addEventListener("change", async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
       try {
-        const res = await fetch("./02_daily_rewards_2026-06.csv");
-        if (!res.ok) throw new Error("无法加载示例 CSV（请用本地 HTTP 服务打开）");
-        await loadCsvText(await res.text(), "02_daily_rewards_2026-06.csv");
-      } catch (err) {
-        setCsvInfo(err.message || String(err), false);
+        await loadStakeSnapshotText(await file.text(), file.name);
+      } catch {
+        /* error shown in stakeSnapshotInfo */
       }
     });
 

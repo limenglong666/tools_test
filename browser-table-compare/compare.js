@@ -20,9 +20,24 @@ const CL_FIELDS_PENALTY = [
   "finality_delay_penalty",
 ];
 
+export function cleanCsvCellValue(raw) {
+  if (raw == null) return "";
+  let s = String(raw).trim();
+  if (s.startsWith('=""') && s.endsWith('""')) {
+    s = s.slice(3, -2);
+  } else if (s.startsWith('="') && s.endsWith('"')) {
+    s = s.slice(2, -1);
+  }
+  if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
+    s = s.slice(1, -1);
+  }
+  return s.trim();
+}
+
 export function normalizePubkey(pk) {
   if (!pk) return "";
-  let s = String(pk).trim().toLowerCase();
+  let s = cleanCsvCellValue(pk).toLowerCase();
+  if (!s) return "";
   if (!s.startsWith("0x")) s = "0x" + s;
   return s;
 }
@@ -64,6 +79,44 @@ export function parseCsv(text) {
     });
   }
   return { header, rows };
+}
+
+/** stake_snapshot CSV：validator_pubkey 对应 daily_rewards 的 Public Key */
+export function parseStakeSnapshotCsv(text) {
+  const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n").filter(Boolean);
+  if (!lines.length) throw new Error("stake_snapshot CSV 为空");
+
+  const header = splitCsvLine(lines[0]).map((h) => h.trim());
+  const idx = {
+    publicKey: findCol(header, ["validator_pubkey", "Validator Pubkey", "validator pubkey", "pubkey", "Public Key"]),
+    totalReward: findCol(header, ["total_reward", "Total Reward", "total reward"]),
+  };
+  if (idx.publicKey < 0) throw new Error("stake_snapshot 未找到 validator_pubkey 列");
+  if (idx.totalReward < 0) throw new Error("stake_snapshot 未找到 total_reward 列");
+
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cols = splitCsvLine(lines[i]);
+    if (!cols.length) continue;
+    const publicKey = normalizePubkey(cols[idx.publicKey]);
+    if (!publicKey) continue;
+    rows.push({
+      line: i + 1,
+      publicKey,
+      totalReward: parseFloat(cleanCsvCellValue(cols[idx.totalReward])) || 0,
+    });
+  }
+  return { header, rows };
+}
+
+export function aggregateStakeSnapshotByPubkey(rows, pubkey) {
+  const pk = normalizePubkey(pubkey);
+  const matched = rows.filter((r) => r.publicKey === pk);
+  return {
+    publicKey: pk,
+    rows: matched,
+    totalReward: matched.reduce((s, r) => s + r.totalReward, 0),
+  };
 }
 
 function findCol(header, names) {
