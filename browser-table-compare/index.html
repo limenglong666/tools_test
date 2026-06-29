@@ -1150,7 +1150,12 @@
       }
       const btn = e.target.closest("button[data-copy]");
       if (!btn) return;
-      copyText(btn.dataset.copy, btn);
+      const pk = normalizePubkey(btn.dataset.copy);
+      selectedCsvLine = null;
+      $("pubkey").value = pk;
+      const v = csvValidators.find((x) => x.publicKey === pk);
+      updateBeaconLink(pk, v?.validatorIndex);
+      copyText(pk, btn);
     });
 
     $("pubkeySearch").addEventListener("input", (e) => {
