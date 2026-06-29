@@ -90,6 +90,7 @@ export function parseStakeSnapshotCsv(text) {
   const idx = {
     publicKey: findCol(header, ["validator_pubkey", "Validator Pubkey", "validator pubkey", "pubkey", "Public Key"]),
     totalReward: findCol(header, ["total_reward", "Total Reward", "total reward"]),
+    walletAddress: findCol(header, ["wallet_address", "Wallet Address", "wallet address"]),
   };
   if (idx.publicKey < 0) throw new Error("stake_snapshot 未找到 validator_pubkey 列");
   if (idx.totalReward < 0) throw new Error("stake_snapshot 未找到 total_reward 列");
@@ -103,10 +104,37 @@ export function parseStakeSnapshotCsv(text) {
     rows.push({
       line: i + 1,
       publicKey,
+      walletAddress: idx.walletAddress >= 0 ? normalizeAddress(cols[idx.walletAddress]) : "",
       totalReward: parseFloat(cleanCsvCellValue(cols[idx.totalReward])) || 0,
     });
   }
   return { header, rows };
+}
+
+export function normalizeAddress(addr) {
+  if (!addr) return "";
+  let s = cleanCsvCellValue(addr).toLowerCase();
+  if (!s) return "";
+  if (!s.startsWith("0x")) s = "0x" + s;
+  return s;
+}
+
+export function filterStakeSnapshotByWallet(rows, walletAddress) {
+  const addr = normalizeAddress(walletAddress);
+  if (!addr) return [];
+  return rows.filter((r) => r.walletAddress === addr);
+}
+
+/** wallet_address 按出现次数从多到少排序 */
+export function listWalletAddressesByCount(rows) {
+  const counts = new Map();
+  for (const row of rows) {
+    if (!row.walletAddress) continue;
+    counts.set(row.walletAddress, (counts.get(row.walletAddress) || 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([address, count]) => ({ address, count }))
+    .sort((a, b) => b.count - a.count || a.address.localeCompare(b.address));
 }
 
 export function aggregateStakeSnapshotByPubkey(rows, pubkey) {

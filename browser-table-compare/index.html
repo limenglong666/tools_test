@@ -206,6 +206,129 @@
     }
     .ctx-validator-totals strong { color: var(--accent); font-weight: 600; }
     .ctx-validator-totals .totals-dim { opacity: 0.85; }
+    .wallet-search {
+      margin-top: 1rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--border);
+    }
+    .wallet-search-results {
+      margin-top: 0.65rem;
+      max-height: 14rem;
+      overflow-y: auto;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: #0a0c10;
+    }
+    .wallet-pubkey-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 0.65rem;
+      border-bottom: 1px solid var(--border);
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.74rem;
+    }
+    .wallet-pubkey-row:last-child { border-bottom: none; }
+    .wallet-pubkey-row code {
+      flex: 1;
+      min-width: 0;
+      word-break: break-all;
+      color: var(--text);
+      font-family: inherit;
+    }
+    button.btn-copy {
+      flex-shrink: 0;
+      padding: 0.25rem 0.55rem;
+      font-size: 0.72rem;
+      font-weight: 600;
+    }
+    .wallet-search-toggle {
+      padding: 0.45rem 0.65rem;
+      border-top: 1px solid var(--border);
+      text-align: center;
+    }
+    button.wallet-toggle-btn {
+      width: 100%;
+      padding: 0.4rem 0.65rem;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--accent);
+      background: transparent;
+      border: 1px dashed var(--border);
+    }
+    button.wallet-toggle-btn:hover {
+      background: var(--accent-dim);
+      border-color: var(--accent);
+    }
+    .wallet-input-field { position: relative; }
+    .wallet-input-wrap {
+      display: flex;
+      align-items: stretch;
+      gap: 0.35rem;
+    }
+    .wallet-input-wrap input { flex: 1; min-width: 0; }
+    button.wallet-pick-btn {
+      flex-shrink: 0;
+      width: 2.25rem;
+      padding: 0;
+      font-size: 0.95rem;
+      line-height: 1;
+      color: var(--muted);
+    }
+    button.wallet-pick-btn.active {
+      color: var(--accent);
+      border-color: var(--accent);
+      background: var(--accent-dim);
+    }
+    .wallet-address-menu {
+      position: absolute;
+      z-index: 20;
+      left: 0;
+      right: 0;
+      top: calc(100% + 0.35rem);
+      max-height: 14rem;
+      overflow-y: auto;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: #0a0c10;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+    }
+    .wallet-address-menu[hidden] { display: none; }
+    .wallet-address-option {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      width: 100%;
+      padding: 0.5rem 0.65rem;
+      border: none;
+      border-bottom: 1px solid var(--border);
+      background: transparent;
+      color: var(--text);
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.72rem;
+      text-align: left;
+      cursor: pointer;
+    }
+    .wallet-address-option:last-child { border-bottom: none; }
+    .wallet-address-option:hover,
+    .wallet-address-option:focus-visible {
+      background: var(--accent-dim);
+      outline: none;
+    }
+    .wallet-address-option code {
+      flex: 1;
+      min-width: 0;
+      word-break: break-all;
+      color: inherit;
+      font-family: inherit;
+    }
+    .wallet-address-option .count {
+      flex-shrink: 0;
+      color: var(--accent);
+      font-size: 0.7rem;
+      font-weight: 600;
+    }
     .ctx-row:last-child { border-bottom: none; }
     details { margin-top: 0.75rem; }
     summary { cursor: pointer; color: var(--accent); font-size: 0.85rem; }
@@ -282,6 +405,21 @@
         </div>
       </div>
       <p id="stakeSnapshotInfo" class="hint">尚未加载 stake_snapshot</p>
+      <div id="walletSearchPanel" class="wallet-search" hidden>
+        <label for="walletSearchInput">按钱包地址搜索 validator_pubkey</label>
+        <div class="row" style="margin-top:0.35rem;margin-bottom:0">
+          <div class="field wallet-input-field">
+            <div class="wallet-input-wrap">
+              <input type="text" id="walletSearchInput" spellcheck="false" placeholder="0x…" autocomplete="off" />
+              <button type="button" id="btnWalletAddressPick" class="wallet-pick-btn" title="从列表选择 wallet_address" aria-expanded="false">▾</button>
+            </div>
+            <div id="walletAddressMenu" class="wallet-address-menu" hidden></div>
+          </div>
+          <button type="button" id="btnWalletSearch">搜索</button>
+        </div>
+        <p id="walletSearchHint" class="hint">输入 wallet_address 后搜索，每行显示一个 validator_pubkey。</p>
+        <div id="walletSearchResults" class="wallet-search-results"></div>
+      </div>
     </section>
 
     <section>
@@ -499,6 +637,9 @@
       countUniquePubkeysInCsvEpochRange,
       parseStakeSnapshotCsv,
       aggregateStakeSnapshotByPubkey,
+      filterStakeSnapshotByWallet,
+      normalizeAddress,
+      listWalletAddressesByCount,
     } from "./compare.js";
     import {
       DEFAULT_EL_FEE_ADDRESS,
@@ -511,6 +652,9 @@
 
     let csvRows = [];
     let stakeSnapshotRows = [];
+    let lastWalletSearchMatched = [];
+    let walletSearchExpanded = false;
+    const WALLET_SEARCH_PREVIEW = 3;
     let csvValidators = [];
     let activeBeaconTab = "json";
     let selectedCsvLine = null;
@@ -731,6 +875,153 @@
       el.className = ok ? "hint msg ok" : "hint";
     }
 
+    function updateWalletSearchPanel() {
+      const panel = $("walletSearchPanel");
+      const hasWalletCol = stakeSnapshotRows.some((r) => r.walletAddress);
+      panel.hidden = !stakeSnapshotRows.length || !hasWalletCol;
+      if (panel.hidden) {
+        $("walletSearchResults").innerHTML = "";
+        $("walletSearchHint").textContent = "输入 wallet_address 后搜索，每行显示一个 validator_pubkey。";
+        closeWalletAddressMenu();
+        return;
+      }
+      renderWalletAddressMenu();
+      if (!$("walletSearchInput").value.trim()) {
+        $("walletSearchResults").innerHTML = "";
+      }
+    }
+
+    function renderWalletAddressMenu(filter = "") {
+      const menu = $("walletAddressMenu");
+      const q = filter.trim().toLowerCase();
+      const list = listWalletAddressesByCount(stakeSnapshotRows).filter(
+        (item) => !q || item.address.includes(q)
+      );
+
+      if (!list.length) {
+        menu.innerHTML = `<div class="hint" style="padding:0.65rem;margin:0">无匹配 wallet_address</div>`;
+        return;
+      }
+
+      menu.innerHTML = list
+        .map(
+          (item) => `<button type="button" class="wallet-address-option" data-address="${item.address}">
+            <code>${item.address}</code>
+            <span class="count">${item.count}</span>
+          </button>`
+        )
+        .join("");
+    }
+
+    function closeWalletAddressMenu() {
+      const menu = $("walletAddressMenu");
+      const btn = $("btnWalletAddressPick");
+      menu.hidden = true;
+      btn.classList.remove("active");
+      btn.setAttribute("aria-expanded", "false");
+    }
+
+    function openWalletAddressMenu() {
+      if (!stakeSnapshotRows.length) return;
+      renderWalletAddressMenu($("walletSearchInput").value);
+      const menu = $("walletAddressMenu");
+      const btn = $("btnWalletAddressPick");
+      menu.hidden = false;
+      btn.classList.add("active");
+      btn.setAttribute("aria-expanded", "true");
+    }
+
+    function toggleWalletAddressMenu() {
+      if ($("walletAddressMenu").hidden) openWalletAddressMenu();
+      else closeWalletAddressMenu();
+    }
+
+    function selectWalletAddress(address) {
+      $("walletSearchInput").value = address;
+      closeWalletAddressMenu();
+      renderWalletSearchResults();
+    }
+
+    function renderWalletPubkeyRow(row) {
+      return `<div class="wallet-pubkey-row">
+        <code title="CSV 第 ${row.line} 行">${row.publicKey}</code>
+        <button type="button" class="btn-copy" data-copy="${row.publicKey}">复制</button>
+      </div>`;
+    }
+
+    function renderWalletSearchResultsList(matched) {
+      const resultsEl = $("walletSearchResults");
+      const preview = WALLET_SEARCH_PREVIEW;
+      const needsFold = matched.length > preview;
+      const visible = walletSearchExpanded ? matched : matched.slice(0, preview);
+
+      resultsEl.innerHTML =
+        visible.map(renderWalletPubkeyRow).join("") +
+        (needsFold
+          ? `<div class="wallet-search-toggle">
+              <button type="button" id="btnWalletSearchToggle" class="wallet-toggle-btn">${
+                walletSearchExpanded
+                  ? "收起"
+                  : `展开全部（共 ${matched.length} 条）`
+              }</button>
+            </div>`
+          : "");
+    }
+
+    function renderWalletSearchResults() {
+      const input = $("walletSearchInput").value.trim();
+      const resultsEl = $("walletSearchResults");
+      const hintEl = $("walletSearchHint");
+
+      walletSearchExpanded = false;
+      lastWalletSearchMatched = [];
+
+      if (!input) {
+        resultsEl.innerHTML = "";
+        hintEl.textContent = "输入 wallet_address 后搜索，每行显示一个 validator_pubkey。";
+        hintEl.className = "hint";
+        return;
+      }
+
+      const addr = normalizeAddress(input);
+      if (!addr) {
+        resultsEl.innerHTML = "";
+        hintEl.textContent = "钱包地址无效";
+        hintEl.className = "hint msg err";
+        return;
+      }
+
+      const matched = filterStakeSnapshotByWallet(stakeSnapshotRows, addr);
+      if (!matched.length) {
+        resultsEl.innerHTML = "";
+        hintEl.textContent = `未找到 wallet_address = ${addr} 的记录`;
+        hintEl.className = "hint msg err";
+        return;
+      }
+
+      lastWalletSearchMatched = matched;
+      const preview = WALLET_SEARCH_PREVIEW;
+      hintEl.textContent =
+        matched.length > preview
+          ? `共 ${matched.length} 条 validator_pubkey（先显示 ${preview} 条）`
+          : `共 ${matched.length} 条 validator_pubkey`;
+      hintEl.className = "hint msg ok";
+      renderWalletSearchResultsList(matched);
+    }
+
+    async function copyText(text, btn) {
+      try {
+        await navigator.clipboard.writeText(text);
+        const prev = btn.textContent;
+        btn.textContent = "已复制";
+        setTimeout(() => {
+          btn.textContent = prev;
+        }, 1200);
+      } catch {
+        btn.textContent = "失败";
+      }
+    }
+
     async function loadCsvText(text, label) {
       try {
         const parsed = parseCsv(text);
@@ -758,10 +1049,12 @@
           `已加载 ${label}：${stakeSnapshotRows.length} 行，${unique} 个唯一 validator_pubkey`,
           true
         );
+        updateWalletSearchPanel();
         refreshCompareContext();
       } catch (err) {
         stakeSnapshotRows = [];
         setStakeSnapshotInfo(err.message || String(err), false);
+        updateWalletSearchPanel();
         refreshCompareContext();
         throw err;
       }
@@ -790,6 +1083,51 @@
       } catch {
         /* error shown in stakeSnapshotInfo */
       }
+    });
+
+    $("btnWalletSearch").addEventListener("click", renderWalletSearchResults);
+    $("btnWalletAddressPick").addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleWalletAddressMenu();
+    });
+    $("walletSearchInput").addEventListener("focus", () => {
+      if (stakeSnapshotRows.length) openWalletAddressMenu();
+    });
+    $("walletSearchInput").addEventListener("input", () => {
+      if (!$("walletAddressMenu").hidden) renderWalletAddressMenu($("walletSearchInput").value);
+    });
+    $("walletSearchInput").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        closeWalletAddressMenu();
+        renderWalletSearchResults();
+      } else if (e.key === "Escape") {
+        closeWalletAddressMenu();
+      }
+    });
+    $("walletAddressMenu").addEventListener("click", (e) => {
+      const opt = e.target.closest(".wallet-address-option");
+      if (!opt) return;
+      selectWalletAddress(opt.dataset.address);
+    });
+    document.addEventListener("click", (e) => {
+      if (e.target.closest(".wallet-input-field")) return;
+      closeWalletAddressMenu();
+    });
+    $("walletSearchResults").addEventListener("click", (e) => {
+      if (e.target.closest("#btnWalletSearchToggle")) {
+        walletSearchExpanded = !walletSearchExpanded;
+        renderWalletSearchResultsList(lastWalletSearchMatched);
+        const hintEl = $("walletSearchHint");
+        if (lastWalletSearchMatched.length > WALLET_SEARCH_PREVIEW) {
+          hintEl.textContent = walletSearchExpanded
+            ? `共 ${lastWalletSearchMatched.length} 条 validator_pubkey（已全部展开）`
+            : `共 ${lastWalletSearchMatched.length} 条 validator_pubkey（先显示 ${WALLET_SEARCH_PREVIEW} 条）`;
+        }
+        return;
+      }
+      const btn = e.target.closest("button[data-copy]");
+      if (!btn) return;
+      copyText(btn.dataset.copy, btn);
     });
 
     $("pubkeySearch").addEventListener("input", (e) => {
