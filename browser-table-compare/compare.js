@@ -147,6 +147,12 @@ export function aggregateStakeSnapshotByPubkey(rows, pubkey) {
   };
 }
 
+/** stake_snapshot total_reward 大于 32 ETH 时减去本金 32 ETH */
+export function adjustStakeTotalReward(totalRewardEth) {
+  const v = Number(totalRewardEth) || 0;
+  return v > 32 ? v - 32 : v;
+}
+
 function findCol(header, names) {
   const lower = header.map((h) => h.toLowerCase());
   for (const name of names) {

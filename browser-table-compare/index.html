@@ -637,6 +637,7 @@
       countUniquePubkeysInCsvEpochRange,
       parseStakeSnapshotCsv,
       aggregateStakeSnapshotByPubkey,
+      adjustStakeTotalReward,
       filterStakeSnapshotByWallet,
       normalizeAddress,
       listWalletAddressesByCount,
@@ -737,33 +738,50 @@
       applyEpochFromSelectedRow(agg);
     }
 
-    function renderValidatorTotals(agg) {
+    function renderValidatorTotals(pubkey, dailyAgg) {
       const el = $("ctxValidatorTotals");
-      if (!agg?.rows?.length) {
+      const pk = normalizePubkey(pubkey);
+      if (!pk) {
         el.textContent = "";
         el.className = "ctx-validator-totals muted";
         return;
       }
-      const clTotal = agg.clEth;
-      const elTotal = agg.elEth;
+
+      const hasDaily = !!dailyAgg?.rows?.length;
+      const clTotal = hasDaily ? dailyAgg.clEth : 0;
+      const elTotal = hasDaily ? dailyAgg.elEth : 0;
       const grandTotal = clTotal + elTotal;
       const stakeAgg = stakeSnapshotRows.length
-        ? aggregateStakeSnapshotByPubkey(stakeSnapshotRows, agg.publicKey)
+        ? aggregateStakeSnapshotByPubkey(stakeSnapshotRows, pk)
         : null;
-      const totalReward = stakeAgg?.totalReward ?? 0;
+      const hasStake = !!stakeAgg?.rows?.length;
+      const rawTotalReward = stakeAgg?.totalReward ?? 0;
+      const totalReward = adjustStakeTotalReward(rawTotalReward);
+      const rewardAdjusted = rawTotalReward > 32;
+
+      if (!hasDaily && !hasStake) {
+        el.textContent = "";
+        el.className = "ctx-validator-totals muted";
+        return;
+      }
 
       el.className = "ctx-validator-totals";
-      let html =
-        `<span><strong>CL 总和</strong> ${formatEth(clTotal)} ETH</span>` +
-        `<span><strong>EL 总和</strong> ${formatEth(elTotal)} ETH</span>` +
-        `<span><strong>总数</strong> ${formatEth(grandTotal)} ETH <span class="totals-dim">（${agg.rows.length} 行）</span></span>`;
+      let html = "";
+
+      if (hasDaily) {
+        html +=
+          `<span><strong>CL 总和</strong> ${formatEth(clTotal)} ETH</span>` +
+          `<span><strong>EL 总和</strong> ${formatEth(elTotal)} ETH</span>` +
+          `<span><strong>总数</strong> ${formatEth(grandTotal)} ETH <span class="totals-dim">（${dailyAgg.rows.length} 行）</span></span>`;
+      } else {
+        html += `<span class="totals-dim">daily_rewards 中无此验证器（已退出或未产生日奖励）</span>`;
+      }
 
       if (stakeSnapshotRows.length) {
-        const stakeHint = stakeAgg.rows.length
-          ? `（${stakeAgg.rows.length} 行）`
-          : "（未匹配）";
+        const stakeHint = hasStake ? `（${stakeAgg.rows.length} 行）` : "（未匹配）";
+        const rewardNote = rewardAdjusted ? ' <span class="totals-dim">（已减 32 ETH）</span>' : "";
         html +=
-          `<span><strong>total_reward 总和</strong> ${formatEth(totalReward)} ETH <span class="totals-dim">${stakeHint}</span></span>` +
+          `<span><strong>total_reward 总和</strong> ${formatEth(totalReward)} ETH <span class="totals-dim">${stakeHint}</span>${rewardNote}</span>` +
           `<span><strong>总收益</strong> ${formatEth(grandTotal + totalReward)} ETH</span>`;
       }
 
@@ -787,9 +805,14 @@
       validatorEl.textContent = pk;
       validatorEl.className = "ctx-value";
 
+      const stakeOnly =
+        stakeSnapshotRows.length && aggregateStakeSnapshotByPubkey(stakeSnapshotRows, pk).rows.length;
+
       if (!csvRows.length) {
-        renderValidatorTotals(null);
-        csvRowsEl.innerHTML = "请先加载 CSV";
+        renderValidatorTotals(pk, { publicKey: pk, rows: [], clEth: 0, elEth: 0 });
+        csvRowsEl.innerHTML = stakeOnly
+          ? "daily_rewards 中无此验证器"
+          : "请先加载 daily_rewards";
         csvRowsEl.className = "ctx-rows ctx-value muted";
         return;
       }
@@ -797,13 +820,13 @@
       const agg = aggregateCsvByPubkey(csvRows, pk);
       if (!agg.rows.length) {
         selectedCsvLine = null;
-        renderValidatorTotals(null);
-        csvRowsEl.innerHTML = "CSV 中无此验证器";
+        renderValidatorTotals(pk, agg);
+        csvRowsEl.innerHTML = "daily_rewards 中无此验证器";
         csvRowsEl.className = "ctx-rows ctx-value muted";
         return;
       }
 
-      renderValidatorTotals(agg);
+      renderValidatorTotals(pk, agg);
       renderCsvRowPicker(agg);
       updateEpochSummary();
     }
