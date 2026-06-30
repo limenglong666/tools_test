@@ -329,6 +329,64 @@
       font-size: 0.7rem;
       font-weight: 600;
     }
+    .stake-validate-panel {
+      margin-top: 0.75rem;
+      padding-top: 0.75rem;
+      border-top: 1px solid var(--border);
+    }
+    .stake-validate-panel .table-wrap {
+      max-height: 18rem;
+      overflow: auto;
+      margin-top: 0.5rem;
+    }
+    .stake-anomaly-table {
+      font-size: 0.7rem;
+      border-collapse: separate;
+      border-spacing: 0;
+    }
+    .stake-anomaly-table thead th {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: var(--surface);
+      box-shadow: 0 1px 0 var(--border);
+    }
+    .stake-anomaly-table th.sortable-th {
+      cursor: pointer;
+      user-select: none;
+    }
+    .stake-anomaly-table th.sortable-th:hover,
+    .stake-anomaly-table th.sortable-th.sorted-asc,
+    .stake-anomaly-table th.sortable-th.sorted-desc {
+      color: var(--accent);
+    }
+    .stake-anomaly-table td, .stake-anomaly-table th { vertical-align: top; }
+    .stake-copy-cell {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.35rem;
+      min-width: 10rem;
+    }
+    .stake-copy-cell code {
+      flex: 1;
+      min-width: 0;
+      word-break: break-all;
+      font-family: inherit;
+      color: var(--text);
+      line-height: 1.45;
+    }
+    .stake-copy-cell a {
+      flex: 1;
+      min-width: 0;
+      word-break: break-all;
+      font-family: inherit;
+      color: var(--accent);
+      text-decoration: none;
+      line-height: 1.45;
+    }
+    .stake-copy-cell a:hover { text-decoration: underline; }
+    .diff-pos { color: var(--warn); }
+    .diff-neg { color: var(--error); }
     .ctx-row:last-child { border-bottom: none; }
     details { margin-top: 0.75rem; }
     summary { cursor: pointer; color: var(--accent); font-size: 0.85rem; }
@@ -403,8 +461,38 @@
           <label for="stakeSnapshotFile">stake_snapshot CSV</label>
           <input type="file" id="stakeSnapshotFile" accept=".csv,text/csv" />
         </div>
+        <button type="button" id="btnStakeValidate" disabled>校验 total_reward</button>
       </div>
       <p id="stakeSnapshotInfo" class="hint">尚未加载 stake_snapshot</p>
+      <div id="stakeValidatePanel" class="stake-validate-panel" hidden>
+        <p class="hint" style="margin-top:0">
+          预期收益 ≈ 32 ETH × 2.5% × 天数 / 365（激活日至退出日；无退出日且 <code>active_ongoing</code> 则算至今）。
+          实际收益取 <code>total_reward</code>（&gt;32 时先减 32）；|实际 − 预期| &gt; 1 ETH 视为可能异常。
+        </p>
+        <p id="stakeValidateSummary" class="hint"></p>
+        <div class="table-wrap">
+          <table class="stake-anomaly-table">
+            <thead>
+              <tr>
+                <th>行</th>
+                <th>validator_pubkey</th>
+                <th>wallet_address</th>
+                <th class="sortable-th" data-sort="validatorStatus" title="点击按状态排序">validator_status_onchain</th>
+                <th>激活 → 结束</th>
+                <th>天数</th>
+                <th>实际收益</th>
+                <th>预期收益</th>
+                <th>偏差</th>
+              </tr>
+            </thead>
+            <tbody id="stakeAnomalyTable"></tbody>
+          </table>
+        </div>
+        <details id="stakeValidateSkipped" hidden>
+          <summary>跳过的行</summary>
+          <p id="stakeSkippedHint" class="hint"></p>
+        </details>
+      </div>
       <div id="walletSearchPanel" class="wallet-search" hidden>
         <label for="walletSearchInput">按钱包地址搜索 validator_pubkey</label>
         <div class="row" style="margin-top:0.35rem;margin-bottom:0">
@@ -638,6 +726,7 @@
       parseStakeSnapshotCsv,
       aggregateStakeSnapshotByPubkey,
       adjustStakeTotalReward,
+      validateStakeSnapshotRewards,
       filterStakeSnapshotByWallet,
       normalizeAddress,
       listWalletAddressesByCount,
@@ -653,6 +742,8 @@
 
     let csvRows = [];
     let stakeSnapshotRows = [];
+    let lastStakeValidateResult = null;
+    let stakeAnomalyStatusSort = null;
     let lastWalletSearchMatched = [];
     let walletSearchExpanded = false;
     const WALLET_SEARCH_PREVIEW = 3;
@@ -898,6 +989,125 @@
       el.className = ok ? "hint msg ok" : "hint";
     }
 
+    function updateStakeValidateButton() {
+      $("btnStakeValidate").disabled = !stakeSnapshotRows.length;
+    }
+
+    function renderStakeCopyCell(value) {
+      if (!value) {
+        return `<span class="muted">—</span>`;
+      }
+      const safe = String(value).replace(/"/g, "&quot;");
+      return `<div class="stake-copy-cell">
+        <code>${safe}</code>
+        <button type="button" class="btn-copy" data-copy="${safe}">复制</button>
+      </div>`;
+    }
+
+    function renderStakeValidatorCell(publicKey) {
+      if (!publicKey) {
+        return `<span class="muted">—</span>`;
+      }
+      const safe = String(publicKey).replace(/"/g, "&quot;");
+      const href = `https://beaconcha.in/validator/${encodeURIComponent(publicKey)}`;
+      return `<div class="stake-copy-cell">
+        <a href="${href}" target="_blank" rel="noopener">${safe}</a>
+        <button type="button" class="btn-copy" data-copy="${safe}">复制</button>
+      </div>`;
+    }
+
+    function sortStakeAnomalies(anomalies) {
+      const list = [...anomalies];
+      if (!stakeAnomalyStatusSort) {
+        return list.sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
+      }
+      const dir = stakeAnomalyStatusSort === "asc" ? 1 : -1;
+      return list.sort((a, b) => {
+        const sa = (a.validatorStatus || "").toLowerCase();
+        const sb = (b.validatorStatus || "").toLowerCase();
+        if (sa < sb) return -dir;
+        if (sa > sb) return dir;
+        return Math.abs(b.diff) - Math.abs(a.diff);
+      });
+    }
+
+    function updateStakeAnomalySortHeader() {
+      const th = document.querySelector('.stake-anomaly-table th[data-sort="validatorStatus"]');
+      if (!th) return;
+      const arrow = stakeAnomalyStatusSort === "asc" ? " ▲" : stakeAnomalyStatusSort === "desc" ? " ▼" : "";
+      th.textContent = `validator_status_onchain${arrow}`;
+      th.classList.toggle("sorted-asc", stakeAnomalyStatusSort === "asc");
+      th.classList.toggle("sorted-desc", stakeAnomalyStatusSort === "desc");
+    }
+
+    function renderStakeAnomalyRows(anomalies) {
+      const tbody = $("stakeAnomalyTable");
+      const sorted = sortStakeAnomalies(anomalies);
+      updateStakeAnomalySortHeader();
+      tbody.innerHTML = sorted
+        .map((a) => {
+          const diffCls = a.diff >= 0 ? "diff-pos" : "diff-neg";
+          return `<tr>
+            <td>${a.line}</td>
+            <td>${renderStakeValidatorCell(a.publicKey)}</td>
+            <td>${renderStakeCopyCell(a.walletAddress)}</td>
+            <td>${a.validatorStatus || "—"}</td>
+            <td>${a.activationDate || "—"} → ${a.endLabel}</td>
+            <td>${Math.round(a.days)}</td>
+            <td>${formatEth(a.actualReward)}</td>
+            <td>${formatEth(a.expectedReward)}</td>
+            <td class="${diffCls}">${formatDiff(a.diff)}</td>
+          </tr>`;
+        })
+        .join("");
+    }
+
+    function renderStakeValidateResults(result, { resetSort = false } = {}) {
+      lastStakeValidateResult = result;
+      if (resetSort) stakeAnomalyStatusSort = null;
+
+      const panel = $("stakeValidatePanel");
+      const summary = $("stakeValidateSummary");
+      const skippedDetails = $("stakeValidateSkipped");
+      const skippedHint = $("stakeSkippedHint");
+
+      panel.hidden = false;
+      const { anomalies, skipped, checked, total } = result;
+
+      if (!anomalies.length) {
+        summary.textContent =
+          `已校验 ${checked} / ${total} 行 · 未发现偏差超过 1 ETH 的异常验证器`;
+        summary.className = "hint msg ok";
+        $("stakeAnomalyTable").innerHTML = "";
+        updateStakeAnomalySortHeader();
+      } else {
+        summary.textContent =
+          `已校验 ${checked} / ${total} 行 · 发现 ${anomalies.length} 个可能异常验证器（|实际 − 预期| > 1 ETH）`;
+        summary.className = "hint msg err";
+        renderStakeAnomalyRows(anomalies);
+      }
+
+      if (skipped.length) {
+        skippedDetails.hidden = false;
+        skippedHint.textContent = `共 ${skipped.length} 行未参与校验：${skipped
+          .slice(0, 5)
+          .map((s) => `第 ${s.row.line} 行（${s.reason}）`)
+          .join("；")}${skipped.length > 5 ? "…" : ""}`;
+      } else {
+        skippedDetails.hidden = true;
+        skippedHint.textContent = "";
+      }
+    }
+
+    function runStakeValidate() {
+      if (!stakeSnapshotRows.length) {
+        setStakeSnapshotInfo("请先加载 stake_snapshot CSV", false);
+        return;
+      }
+      const result = validateStakeSnapshotRewards(stakeSnapshotRows);
+      renderStakeValidateResults(result, { resetSort: true });
+    }
+
     function updateWalletSearchPanel() {
       const panel = $("walletSearchPanel");
       const hasWalletCol = stakeSnapshotRows.some((r) => r.walletAddress);
@@ -1072,12 +1282,16 @@
           `已加载 ${label}：${stakeSnapshotRows.length} 行，${unique} 个唯一 validator_pubkey`,
           true
         );
+        $("stakeValidatePanel").hidden = true;
         updateWalletSearchPanel();
+        updateStakeValidateButton();
         refreshCompareContext();
       } catch (err) {
         stakeSnapshotRows = [];
         setStakeSnapshotInfo(err.message || String(err), false);
+        $("stakeValidatePanel").hidden = true;
         updateWalletSearchPanel();
+        updateStakeValidateButton();
         refreshCompareContext();
         throw err;
       }
@@ -1101,11 +1315,27 @@
     $("stakeSnapshotFile").addEventListener("change", async (e) => {
       const file = e.target.files?.[0];
       if (!file) return;
+      $("stakeValidatePanel").hidden = true;
       try {
         await loadStakeSnapshotText(await file.text(), file.name);
       } catch {
         /* error shown in stakeSnapshotInfo */
       }
+    });
+
+    $("btnStakeValidate").addEventListener("click", runStakeValidate);
+
+    document.querySelector(".stake-anomaly-table thead")?.addEventListener("click", (e) => {
+      const th = e.target.closest('th[data-sort="validatorStatus"]');
+      if (!th || !lastStakeValidateResult?.anomalies?.length) return;
+      stakeAnomalyStatusSort = stakeAnomalyStatusSort === "asc" ? "desc" : "asc";
+      renderStakeAnomalyRows(lastStakeValidateResult.anomalies);
+    });
+
+    $("stakeValidatePanel").addEventListener("click", (e) => {
+      const btn = e.target.closest("button[data-copy]");
+      if (!btn || !e.target.closest("#stakeAnomalyTable")) return;
+      copyText(btn.dataset.copy, btn);
     });
 
     $("btnWalletSearch").addEventListener("click", renderWalletSearchResults);

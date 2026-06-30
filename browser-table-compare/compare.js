@@ -91,6 +91,9 @@ export function parseStakeSnapshotCsv(text) {
     publicKey: findCol(header, ["validator_pubkey", "Validator Pubkey", "validator pubkey", "pubkey", "Public Key"]),
     totalReward: findCol(header, ["total_reward", "Total Reward", "total reward"]),
     walletAddress: findCol(header, ["wallet_address", "Wallet Address", "wallet address"]),
+    activationDate: findCol(header, ["activation_date_onchain", "Activation Date Onchain"]),
+    exitedDate: findCol(header, ["exited_date_onchain", "Exited Date Onchain"]),
+    validatorStatus: findCol(header, ["validator_status_onchain", "Validator Status Onchain"]),
   };
   if (idx.publicKey < 0) throw new Error("stake_snapshot 未找到 validator_pubkey 列");
   if (idx.totalReward < 0) throw new Error("stake_snapshot 未找到 total_reward 列");
@@ -106,9 +109,101 @@ export function parseStakeSnapshotCsv(text) {
       publicKey,
       walletAddress: idx.walletAddress >= 0 ? normalizeAddress(cols[idx.walletAddress]) : "",
       totalReward: parseFloat(cleanCsvCellValue(cols[idx.totalReward])) || 0,
+      activationDate: idx.activationDate >= 0 ? cleanCsvCellValue(cols[idx.activationDate]) : "",
+      exitedDate: idx.exitedDate >= 0 ? cleanCsvCellValue(cols[idx.exitedDate]) : "",
+      validatorStatus: idx.validatorStatus >= 0 ? cleanCsvCellValue(cols[idx.validatorStatus]) : "",
     });
   }
   return { header, rows };
+}
+
+export const STAKE_PRINCIPAL_ETH = 32;
+export const STAKE_ANNUAL_REWARD_RATE = 0.025;
+export const STAKE_REWARD_TOLERANCE_ETH = 1;
+
+export function parseDateOnly(text) {
+  const s = cleanCsvCellValue(text);
+  if (!s) return null;
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return null;
+  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function utcToday(now = new Date()) {
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+}
+
+function daysBetweenUtc(start, end) {
+  return Math.max(0, (end.getTime() - start.getTime()) / 86_400_000);
+}
+
+/** 按年化约 2.5%（32 ETH 本金）估算质押收益，与 total_reward 对比 */
+export function validateStakeSnapshotRewards(rows, options = {}) {
+  const {
+    now = new Date(),
+    principalEth = STAKE_PRINCIPAL_ETH,
+    annualRate = STAKE_ANNUAL_REWARD_RATE,
+    toleranceEth = STAKE_REWARD_TOLERANCE_ETH,
+  } = options;
+  const today = utcToday(now);
+  const anomalies = [];
+  const skipped = [];
+  let checked = 0;
+
+  for (const row of rows) {
+    const activation = parseDateOnly(row.activationDate);
+    if (!activation) {
+      skipped.push({ row, reason: "缺少 activation_date_onchain" });
+      continue;
+    }
+
+    let endDate = null;
+    let endLabel = "";
+    const exited = parseDateOnly(row.exitedDate);
+    if (exited) {
+      endDate = exited;
+      endLabel = row.exitedDate;
+    } else if (row.validatorStatus === "active_ongoing") {
+      endDate = today;
+      endLabel = "至今";
+    } else {
+      skipped.push({
+        row,
+        reason: `无 exited_date_onchain 且状态非 active_ongoing（${row.validatorStatus || "—"}）`,
+      });
+      continue;
+    }
+
+    if (endDate < activation) {
+      skipped.push({ row, reason: "退出日期早于激活日期" });
+      continue;
+    }
+
+    checked += 1;
+    const days = daysBetweenUtc(activation, endDate);
+    const expectedReward = principalEth * annualRate * (days / 365);
+    const actualReward = adjustStakeTotalReward(row.totalReward);
+    const diff = actualReward - expectedReward;
+    if (Math.abs(diff) > toleranceEth) {
+      anomalies.push({
+        line: row.line,
+        publicKey: row.publicKey,
+        walletAddress: row.walletAddress,
+        activationDate: row.activationDate,
+        endLabel,
+        validatorStatus: row.validatorStatus,
+        days,
+        totalRewardRaw: row.totalReward,
+        actualReward,
+        expectedReward,
+        diff,
+      });
+    }
+  }
+
+  anomalies.sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
+  return { anomalies, skipped, checked, total: rows.length };
 }
 
 export function normalizeAddress(addr) {
