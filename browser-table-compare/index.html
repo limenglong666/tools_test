@@ -467,7 +467,9 @@
       <div id="stakeValidatePanel" class="stake-validate-panel" hidden>
         <p class="hint" style="margin-top:0">
           预期收益 ≈ 32 ETH × 2.5% × 天数 / 365（激活日至退出日；无退出日且 <code>active_ongoing</code> 则算至今）。
-          实际收益取 <code>total_reward</code>（&gt;32 时先减 32）；|实际 − 预期| &gt; 1 ETH 视为可能异常。
+          实际收益：若 <code>withdrawal_cred</code> 以 <code>0x00</code> 开头，则 <code>total_reward += validator_balance − 32</code>；
+          <code>CL reward = adjust(total_reward) − mev_reward</code>（adjust 含 0x00 调整及 &gt;32 减 32）；
+          实际收益 = adjust(total_reward)；|实际 − 预期| &gt; 1 ETH 视为可能异常。
         </p>
         <p id="stakeValidateSummary" class="hint"></p>
         <div class="table-wrap">
@@ -480,6 +482,8 @@
                 <th class="sortable-th" data-sort="validatorStatus" title="点击按状态排序">validator_status_onchain</th>
                 <th>激活 → 结束</th>
                 <th>天数</th>
+                <th>mev_reward</th>
+                <th>CL reward</th>
                 <th>实际收益</th>
                 <th>预期收益</th>
                 <th>偏差</th>
@@ -1054,6 +1058,8 @@
             <td>${a.validatorStatus || "—"}</td>
             <td>${a.activationDate || "—"} → ${a.endLabel}</td>
             <td>${Math.round(a.days)}</td>
+            <td>${formatEth(a.mevReward)}</td>
+            <td>${formatEth(a.clReward)}</td>
             <td>${formatEth(a.actualReward)}</td>
             <td>${formatEth(a.expectedReward)}</td>
             <td class="${diffCls}">${formatDiff(a.diff)}</td>

@@ -91,6 +91,9 @@ export function parseStakeSnapshotCsv(text) {
     publicKey: findCol(header, ["validator_pubkey", "Validator Pubkey", "validator pubkey", "pubkey", "Public Key"]),
     totalReward: findCol(header, ["total_reward", "Total Reward", "total reward"]),
     walletAddress: findCol(header, ["wallet_address", "Wallet Address", "wallet address"]),
+    withdrawalCred: findCol(header, ["withdrawal_cred", "Withdrawal Cred", "withdrawal cred"]),
+    validatorBalance: findCol(header, ["validator_balance", "Validator Balance", "validator balance"]),
+    mevReward: findCol(header, ["mev_reward", "MEV Reward", "mev reward"]),
     activationDate: findCol(header, ["activation_date_onchain", "Activation Date Onchain"]),
     exitedDate: findCol(header, ["exited_date_onchain", "Exited Date Onchain"]),
     validatorStatus: findCol(header, ["validator_status_onchain", "Validator Status Onchain"]),
@@ -104,17 +107,38 @@ export function parseStakeSnapshotCsv(text) {
     if (!cols.length) continue;
     const publicKey = normalizePubkey(cols[idx.publicKey]);
     if (!publicKey) continue;
+    const totalRewardRaw = parseFloat(cleanCsvCellValue(cols[idx.totalReward])) || 0;
+    const withdrawalCred = idx.withdrawalCred >= 0 ? cleanCsvCellValue(cols[idx.withdrawalCred]) : "";
+    const validatorBalance =
+      idx.validatorBalance >= 0 ? parseFloat(cleanCsvCellValue(cols[idx.validatorBalance])) || 0 : 0;
+    const mevReward = idx.mevReward >= 0 ? parseFloat(cleanCsvCellValue(cols[idx.mevReward])) || 0 : 0;
+    const totalReward = resolveStakeTotalReward({ totalRewardRaw, withdrawalCred, validatorBalance });
     rows.push({
       line: i + 1,
       publicKey,
       walletAddress: idx.walletAddress >= 0 ? normalizeAddress(cols[idx.walletAddress]) : "",
-      totalReward: parseFloat(cleanCsvCellValue(cols[idx.totalReward])) || 0,
+      totalRewardRaw,
+      mevReward,
+      withdrawalCred,
+      validatorBalance,
+      totalReward,
+      clReward: computeStakeClReward(totalReward, mevReward),
       activationDate: idx.activationDate >= 0 ? cleanCsvCellValue(cols[idx.activationDate]) : "",
       exitedDate: idx.exitedDate >= 0 ? cleanCsvCellValue(cols[idx.exitedDate]) : "",
       validatorStatus: idx.validatorStatus >= 0 ? cleanCsvCellValue(cols[idx.validatorStatus]) : "",
     });
   }
   return { header, rows };
+}
+
+/** withdrawal_cred 以 0x00 开头时，total_reward += validator_balance − 32 */
+export function resolveStakeTotalReward({ totalRewardRaw, withdrawalCred, validatorBalance }) {
+  let reward = Number(totalRewardRaw) || 0;
+  const cred = cleanCsvCellValue(withdrawalCred || "").toLowerCase();
+  if (cred.startsWith("0x00")) {
+    reward += (Number(validatorBalance) || 0) - STAKE_PRINCIPAL_ETH;
+  }
+  return reward;
 }
 
 export const STAKE_PRINCIPAL_ETH = 32;
@@ -194,7 +218,10 @@ export function validateStakeSnapshotRewards(rows, options = {}) {
         endLabel,
         validatorStatus: row.validatorStatus,
         days,
-        totalRewardRaw: row.totalReward,
+        mevReward: row.mevReward,
+        clReward: row.clReward,
+        totalRewardRaw: row.totalRewardRaw,
+        totalRewardResolved: row.totalReward,
         actualReward,
         expectedReward,
         diff,
@@ -245,7 +272,12 @@ export function aggregateStakeSnapshotByPubkey(rows, pubkey) {
 /** stake_snapshot total_reward 大于 32 ETH 时减去本金 32 ETH */
 export function adjustStakeTotalReward(totalRewardEth) {
   const v = Number(totalRewardEth) || 0;
-  return v > 32 ? v - 32 : v;
+  return v > STAKE_PRINCIPAL_ETH ? v - STAKE_PRINCIPAL_ETH : v;
+}
+
+/** CL reward = adjust(total_reward) − mev_reward */
+export function computeStakeClReward(totalReward, mevReward) {
+  return adjustStakeTotalReward(totalReward) - (Number(mevReward) || 0);
 }
 
 function findCol(header, names) {
