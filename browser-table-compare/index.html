@@ -387,6 +387,68 @@
     .stake-copy-cell a:hover { text-decoration: underline; }
     .diff-pos { color: var(--warn); }
     .diff-neg { color: var(--error); }
+    .wallet-scenario-panel {
+      margin-top: 1rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--border);
+    }
+    .wallet-scenario-results {
+      margin-top: 0.65rem;
+      max-height: 20rem;
+      overflow-y: auto;
+    }
+    .wallet-scenario-card {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: #0a0c10;
+      margin-bottom: 0.65rem;
+      overflow: hidden;
+    }
+    .wallet-scenario-card:last-child { margin-bottom: 0; }
+    .wallet-scenario-header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.55rem 0.65rem;
+      border-bottom: 1px solid var(--border);
+      background: rgba(61, 139, 253, 0.05);
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.72rem;
+    }
+    .wallet-scenario-header code {
+      flex: 1;
+      min-width: 0;
+      word-break: break-all;
+      color: var(--accent);
+    }
+    .wallet-scenario-count { color: var(--muted); font-size: 0.7rem; }
+    .wallet-scenario-validators { padding: 0.35rem 0; }
+    .wallet-scenario-val {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.45rem;
+      padding: 0.45rem 0.65rem;
+      border-bottom: 1px solid var(--border);
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.7rem;
+    }
+    .wallet-scenario-val:last-child { border-bottom: none; }
+    .wallet-scenario-val-body {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.2rem;
+    }
+    .wallet-scenario-val-body a {
+      word-break: break-all;
+      color: var(--accent);
+      text-decoration: none;
+    }
+    .wallet-scenario-val-body a:hover { text-decoration: underline; }
+    .wallet-scenario-meta { color: var(--muted); font-size: 0.68rem; }
+    .wallet-scenario-meta strong { color: var(--text); font-weight: 600; }
     .ctx-row:last-child { border-bottom: none; }
     details { margin-top: 0.75rem; }
     summary { cursor: pointer; color: var(--accent); font-size: 0.85rem; }
@@ -511,6 +573,19 @@
         </div>
         <p id="walletSearchHint" class="hint">输入 wallet_address 后搜索，每行显示一个 validator_pubkey。</p>
         <div id="walletSearchResults" class="wallet-search-results"></div>
+      </div>
+      <div id="walletScenarioPanel" class="wallet-scenario-panel" hidden>
+        <label for="walletScenarioSelect">钱包场景筛选（按 wallet_address 聚合）</label>
+        <div class="row" style="margin-top:0.35rem;margin-bottom:0">
+          <div class="field">
+            <select id="walletScenarioSelect">
+              <option value="">— 选择场景 —</option>
+            </select>
+          </div>
+          <button type="button" id="btnWalletScenarioSearch">搜索</button>
+        </div>
+        <p id="walletScenarioHint" class="hint">加载 stake_snapshot 后选择场景，列出匹配的 wallet_address 及其验证器。</p>
+        <div id="walletScenarioResults" class="wallet-scenario-results"></div>
       </div>
     </section>
 
@@ -734,6 +809,9 @@
       filterStakeSnapshotByWallet,
       normalizeAddress,
       listWalletAddressesByCount,
+      WALLET_SCENARIO_DEFS,
+      filterWalletsByScenario,
+      withdrawalCredType,
     } from "./compare.js";
     import {
       DEFAULT_EL_FEE_ADDRESS,
@@ -750,7 +828,10 @@
     let stakeAnomalyStatusSort = null;
     let lastWalletSearchMatched = [];
     let walletSearchExpanded = false;
+    let walletScenarioExpanded = false;
+    let lastWalletScenarioMatched = [];
     const WALLET_SEARCH_PREVIEW = 3;
+    const WALLET_SCENARIO_PREVIEW = 5;
     let csvValidators = [];
     let activeBeaconTab = "json";
     let selectedCsvLine = null;
@@ -1128,6 +1209,108 @@
       if (!$("walletSearchInput").value.trim()) {
         $("walletSearchResults").innerHTML = "";
       }
+      updateWalletScenarioPanel();
+    }
+
+    function populateWalletScenarioSelect() {
+      const select = $("walletScenarioSelect");
+      select.innerHTML =
+        `<option value="">— 选择场景 —</option>` +
+        WALLET_SCENARIO_DEFS.map((d) => `<option value="${d.id}">${d.label}</option>`).join("");
+    }
+
+    function updateWalletScenarioPanel() {
+      const panel = $("walletScenarioPanel");
+      const hasWalletCol = stakeSnapshotRows.some((r) => r.walletAddress);
+      panel.hidden = !stakeSnapshotRows.length || !hasWalletCol;
+      if (panel.hidden) {
+        $("walletScenarioResults").innerHTML = "";
+        $("walletScenarioHint").textContent =
+          "加载 stake_snapshot 后选择场景，列出匹配的 wallet_address 及其验证器。";
+        $("walletScenarioHint").className = "hint";
+        lastWalletScenarioMatched = [];
+        return;
+      }
+      populateWalletScenarioSelect();
+    }
+
+    function renderWalletScenarioValidator(v) {
+      const cred = withdrawalCredType(v.withdrawalCred);
+      const href = `https://beaconcha.in/validator/${encodeURIComponent(v.publicKey)}`;
+      const safe = String(v.publicKey).replace(/"/g, "&quot;");
+      return `<div class="wallet-scenario-val">
+        <div class="wallet-scenario-val-body">
+          <a href="${href}" target="_blank" rel="noopener">${safe}</a>
+          <span class="wallet-scenario-meta"><strong>${cred}</strong> · ${v.validatorStatus || "—"} · 第 ${v.line} 行</span>
+        </div>
+        <button type="button" class="btn-copy" data-copy="${safe}">复制</button>
+      </div>`;
+    }
+
+    function renderWalletScenarioCard(profile) {
+      const safe = profile.walletAddress.replace(/"/g, "&quot;");
+      return `<div class="wallet-scenario-card">
+        <div class="wallet-scenario-header">
+          <code>${safe}</code>
+          <button type="button" class="btn-copy" data-copy="${safe}">复制钱包</button>
+          <span class="wallet-scenario-count">${profile.validators.length} 个验证器</span>
+        </div>
+        <div class="wallet-scenario-validators">
+          ${profile.validators.map(renderWalletScenarioValidator).join("")}
+        </div>
+      </div>`;
+    }
+
+    function renderWalletScenarioResultsList(profiles) {
+      const resultsEl = $("walletScenarioResults");
+      const preview = WALLET_SCENARIO_PREVIEW;
+      const needsFold = profiles.length > preview;
+      const visible = walletScenarioExpanded ? profiles : profiles.slice(0, preview);
+
+      resultsEl.innerHTML =
+        visible.map(renderWalletScenarioCard).join("") +
+        (needsFold
+          ? `<div class="wallet-search-toggle">
+              <button type="button" id="btnWalletScenarioToggle" class="wallet-toggle-btn">${
+                walletScenarioExpanded
+                  ? "收起"
+                  : `展开全部（共 ${profiles.length} 个钱包）`
+              }</button>
+            </div>`
+          : "");
+    }
+
+    function renderWalletScenarioResults() {
+      const scenarioId = $("walletScenarioSelect").value;
+      const hintEl = $("walletScenarioHint");
+      walletScenarioExpanded = false;
+      lastWalletScenarioMatched = [];
+
+      if (!scenarioId) {
+        $("walletScenarioResults").innerHTML = "";
+        hintEl.textContent = "请先选择场景";
+        hintEl.className = "hint";
+        return;
+      }
+
+      const def = WALLET_SCENARIO_DEFS.find((d) => d.id === scenarioId);
+      const matched = filterWalletsByScenario(stakeSnapshotRows, scenarioId);
+      lastWalletScenarioMatched = matched;
+
+      if (!matched.length) {
+        $("walletScenarioResults").innerHTML = "";
+        hintEl.textContent = `${def.label}：未找到匹配的钱包`;
+        hintEl.className = "hint msg err";
+        return;
+      }
+
+      const validatorCount = matched.reduce((s, p) => s + p.validators.length, 0);
+      hintEl.textContent =
+        matched.length > WALLET_SCENARIO_PREVIEW
+          ? `${def.label}：${matched.length} 个钱包、${validatorCount} 个验证器（先显示 ${WALLET_SCENARIO_PREVIEW} 个钱包）`
+          : `${def.label}：${matched.length} 个钱包、${validatorCount} 个验证器`;
+      hintEl.className = "hint msg ok";
+      renderWalletScenarioResultsList(matched);
     }
 
     function renderWalletAddressMenu(filter = "") {
@@ -1289,6 +1472,7 @@
           true
         );
         $("stakeValidatePanel").hidden = true;
+        $("walletScenarioResults").innerHTML = "";
         updateWalletSearchPanel();
         updateStakeValidateButton();
         refreshCompareContext();
@@ -1297,6 +1481,7 @@
         setStakeSnapshotInfo(err.message || String(err), false);
         $("stakeValidatePanel").hidden = true;
         updateWalletSearchPanel();
+        updateWalletScenarioPanel();
         updateStakeValidateButton();
         refreshCompareContext();
         throw err;
@@ -1322,11 +1507,39 @@
       const file = e.target.files?.[0];
       if (!file) return;
       $("stakeValidatePanel").hidden = true;
+      $("walletScenarioResults").innerHTML = "";
       try {
         await loadStakeSnapshotText(await file.text(), file.name);
       } catch {
         /* error shown in stakeSnapshotInfo */
       }
+    });
+
+    $("btnWalletScenarioSearch").addEventListener("click", renderWalletScenarioResults);
+    $("walletScenarioResults").addEventListener("click", (e) => {
+      if (e.target.closest("#btnWalletScenarioToggle")) {
+        walletScenarioExpanded = !walletScenarioExpanded;
+        renderWalletScenarioResultsList(lastWalletScenarioMatched);
+        const hintEl = $("walletScenarioHint");
+        const def = WALLET_SCENARIO_DEFS.find((d) => d.id === $("walletScenarioSelect").value);
+        if (def && lastWalletScenarioMatched.length > WALLET_SCENARIO_PREVIEW) {
+          const validatorCount = lastWalletScenarioMatched.reduce((s, p) => s + p.validators.length, 0);
+          hintEl.textContent = walletScenarioExpanded
+            ? `${def.label}：${lastWalletScenarioMatched.length} 个钱包、${validatorCount} 个验证器（已全部展开）`
+            : `${def.label}：${lastWalletScenarioMatched.length} 个钱包、${validatorCount} 个验证器（先显示 ${WALLET_SCENARIO_PREVIEW} 个钱包）`;
+        }
+        return;
+      }
+      const btn = e.target.closest("button[data-copy]");
+      if (!btn) return;
+      const pk = normalizePubkey(btn.dataset.copy);
+      if (pk.length > 42) {
+        selectedCsvLine = null;
+        $("pubkey").value = pk;
+        const v = csvValidators.find((x) => x.publicKey === pk);
+        updateBeaconLink(pk, v?.validatorIndex);
+      }
+      copyText(btn.dataset.copy, btn);
     });
 
     $("btnStakeValidate").addEventListener("click", runStakeValidate);

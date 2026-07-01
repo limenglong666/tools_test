@@ -259,6 +259,113 @@ export function listWalletAddressesByCount(rows) {
     .sort((a, b) => b.count - a.count || a.address.localeCompare(b.address));
 }
 
+export function withdrawalCredType(withdrawalCred) {
+  const cred = cleanCsvCellValue(withdrawalCred || "").toLowerCase();
+  if (cred.startsWith("0x00")) return "0x00";
+  if (cred.startsWith("0x01")) return "0x01";
+  return "other";
+}
+
+export function buildWalletProfiles(rows) {
+  const map = new Map();
+  for (const row of rows) {
+    if (!row.walletAddress) continue;
+    if (!map.has(row.walletAddress)) {
+      map.set(row.walletAddress, { walletAddress: row.walletAddress, validators: [] });
+    }
+    map.get(row.walletAddress).validators.push(row);
+  }
+  return [...map.values()].map((profile) => ({
+    ...profile,
+    has00Active: profile.validators.some(
+      (v) => withdrawalCredType(v.withdrawalCred) === "0x00" && v.validatorStatus === "active_ongoing"
+    ),
+    has00Withdrawn: profile.validators.some(
+      (v) => withdrawalCredType(v.withdrawalCred) === "0x00" && v.validatorStatus === "withdrawal_done"
+    ),
+    has01Active: profile.validators.some(
+      (v) => withdrawalCredType(v.withdrawalCred) === "0x01" && v.validatorStatus === "active_ongoing"
+    ),
+    has01Withdrawn: profile.validators.some(
+      (v) => withdrawalCredType(v.withdrawalCred) === "0x01" && v.validatorStatus === "withdrawal_done"
+    ),
+  }));
+}
+
+export const WALLET_SCENARIO_DEFS = [
+  {
+    id: "only_00_active",
+    label: "1. 仅有 0x00 验证器（active_ongoing）",
+    match(p) {
+      return (
+        p.validators.length > 0 &&
+        p.validators.every(
+          (v) => withdrawalCredType(v.withdrawalCred) === "0x00" && v.validatorStatus === "active_ongoing"
+        )
+      );
+    },
+  },
+  {
+    id: "only_00_withdrawn",
+    label: "2. 仅有 0x00 验证器（withdrawal_done）",
+    match(p) {
+      return (
+        p.validators.length > 0 &&
+        p.validators.every(
+          (v) => withdrawalCredType(v.withdrawalCred) === "0x00" && v.validatorStatus === "withdrawal_done"
+        )
+      );
+    },
+  },
+  {
+    id: "only_01_active",
+    label: "3. 仅有 0x01 验证器（active_ongoing）",
+    match(p) {
+      return (
+        p.validators.length > 0 &&
+        p.validators.every(
+          (v) => withdrawalCredType(v.withdrawalCred) === "0x01" && v.validatorStatus === "active_ongoing"
+        )
+      );
+    },
+  },
+  {
+    id: "only_01_withdrawn",
+    label: "4. 仅有 0x01 验证器（withdrawal_done）",
+    match(p) {
+      return (
+        p.validators.length > 0 &&
+        p.validators.every(
+          (v) => withdrawalCredType(v.withdrawalCred) === "0x01" && v.validatorStatus === "withdrawal_done"
+        )
+      );
+    },
+  },
+  {
+    id: "mix_00_active_withdrawn",
+    label: "5. 有 0x00 active_ongoing + 有 0x00 withdrawal_done",
+    match: (p) => p.has00Active && p.has00Withdrawn,
+  },
+  {
+    id: "mix_00_active_01_active",
+    label: "6. 有 0x00 active_ongoing + 有 0x01 active_ongoing",
+    match: (p) => p.has00Active && p.has01Active,
+  },
+  {
+    id: "mix_00_active_01_withdrawn",
+    label: "7. 有 0x00 active_ongoing + 有 0x01 withdrawal_done",
+    match: (p) => p.has00Active && p.has01Withdrawn,
+  },
+];
+
+export function filterWalletsByScenario(rows, scenarioId) {
+  const def = WALLET_SCENARIO_DEFS.find((d) => d.id === scenarioId);
+  if (!def) throw new Error("未知钱包场景");
+  return buildWalletProfiles(rows)
+    .filter(def.match)
+    .sort((a, b) => a.walletAddress.localeCompare(b.walletAddress));
+}
+
 export function aggregateStakeSnapshotByPubkey(rows, pubkey) {
   const pk = normalizePubkey(pubkey);
   const matched = rows.filter((r) => r.publicKey === pk);
